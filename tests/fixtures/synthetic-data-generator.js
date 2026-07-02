@@ -191,24 +191,102 @@ function generateSyntheticData(opts) {
   return { rows, machineIds, plantedIds, specialDates, normalDates, targetDate, criteria };
 }
 
+/**
+ * analysis_*.html の埋め込みインラインJS（PredictionEngine2 / SpecMatch /
+ * PredictorAudit / isHighSetting / isSpecialDay / parseFraction 等）を、
+ * 最小DOMスタブの vm サンドボックス上でロードして返す。
+ * Step4/5 のテストでも SpecMatch / PredictorAudit を取り出すのに再利用する。
+ * @param {string} htmlPath analysis_*.html への絶対パス
+ * @returns {object} sandbox（app のグローバルが乗ったオブジェクト）
+ */
+function loadAppScript(htmlPath) {
+  const fs = require('fs');
+  const vm = require('vm');
+  const html = fs.readFileSync(htmlPath, 'utf8');
+  // src なしのインライン <script> を全て連結（外部CDNはスキップ）
+  const re = /<script\b([^>]*)>([\s\S]*?)<\/script>/gi;
+  let m, code = '';
+  while ((m = re.exec(html)) !== null) {
+    if (/\bsrc\s*=/i.test(m[1] || '')) continue;
+    code += m[2] + '\n';
+  }
+  const stubEl = () => {
+    const el = { style: {}, value: '', textContent: '', innerHTML: '' };
+    return new Proxy(el, {
+      get(t, p) { if (p in t) return t[p]; if (typeof p === 'string' && (p.startsWith('add') || p === 'onchange' || p === 'onclick')) return () => {}; return t[p]; },
+      set(t, p, v) { t[p] = v; return true; },
+    });
+  };
+  const sandbox = {
+    console,
+    document: { getElementById: () => stubEl(), querySelectorAll: () => [], addEventListener: () => {} },
+    localStorage: { _s: {}, getItem(k) { return this._s[k] != null ? this._s[k] : null; }, setItem(k, v) { this._s[k] = String(v); } },
+    fetch: () => Promise.reject(new Error('no network in test sandbox')),
+    alert: () => {}, Chart: function () { return {}; },
+  };
+  sandbox.window = sandbox;
+  vm.createContext(sandbox);
+  vm.runInContext(code, sandbox, { filename: htmlPath });
+  return sandbox;
+}
+
 module.exports = {
   generateSyntheticData,
+  loadAppScript,
   isSpecialCommon,
   isSpecialJuggler,
   mulberry32,
   gaussian,
 };
 
-// ── CLI デモ：`node synthetic-data-generator.js` で要約を表示 ──
+// ── 自己検証テスト（品質ゲート）：`node synthetic-data-generator.js`
+//    条件を満たさなければ非ゼロ exit code で終了する。目視不要。 ──
 if (require.main === module) {
-  const { rows, machineIds, plantedIds, specialDates, targetDate } = generateSyntheticData({});
-  console.log('生成行数:', rows.length);
-  console.log('台数:', machineIds.length, '| 仕込み台:', plantedIds.join(','));
-  console.log('特定日数:', specialDates.length, '| 目標日:', targetDate);
-  console.log('サンプル行:', JSON.stringify(rows[0], null, 0));
-  // 連続性の簡易確認：ある特定日の RB確率分母がばらけているか
-  const day = specialDates[3];
-  const dens = rows.filter(r => r.日付 === day).map(r => parseInt(r.RB確率.split('/')[1]));
-  const uniq = new Set(dens);
-  console.log(`特定日 ${day} の RB分母 ${dens.length}台中 ユニーク値=${uniq.size}（連続なら台数に近い）`);
+  const path = require('path');
+
+  // 品質ゲートのしきい値
+  const MIN_DISTINCT_SCORES = 6; // 全台スコアの異なり数の下限（二値化していないことの目安。実測9）
+
+  const htmlPath = path.join(__dirname, '..', '..', 'analysis_大東洋本店.html');
+  const app = loadAppScript(htmlPath);
+  if (typeof app.PredictionEngine2 !== 'object' || typeof app.PredictionEngine2.compute !== 'function') {
+    console.error('FAIL - PredictionEngine2 を analysis_大東洋本店.html からロードできません');
+    process.exit(1);
+  }
+
+  // 任意：SDG_OPTS 環境変数（JSON）で generator オプションを上書き（CI/負のテスト用）
+  let genOpts = {};
+  if (process.env.SDG_OPTS) { try { genOpts = JSON.parse(process.env.SDG_OPTS); } catch (e) { console.error('SDG_OPTS の JSON が不正:', e.message); process.exit(2); } }
+  const { rows, plantedIds, targetDate } = generateSyntheticData(genOpts);
+  const planted = new Set(plantedIds);
+  app.allData = rows;
+  app.sheetName = 'マイジャグラーV';
+
+  const R = app.PredictionEngine2.compute(
+    rows, targetDate,
+    { isHighSetting: app.isHighSetting, isSpecialDay: app.isSpecialDay, parseFraction: app.parseFraction },
+    { period: { mode: 'all' } }
+  );
+
+  const scores = R.ranking.map((x) => x.score);
+  const plantedScores = R.ranking.filter((x) => planted.has(x.m)).map((x) => x.score);
+  const otherScores = R.ranking.filter((x) => !planted.has(x.m)).map((x) => x.score);
+  const minPlanted = Math.min.apply(null, plantedScores);
+  const maxOther = otherScores.length ? Math.max.apply(null, otherScores) : -Infinity;
+  const distinctCount = new Set(scores).size;
+
+  let failed = 0;
+  function check(name, cond, detail) {
+    console.log((cond ? 'PASS' : 'FAIL') + ' - ' + name + (detail ? '  (' + detail + ')' : ''));
+    if (!cond) failed++;
+  }
+
+  console.log('=== PredictionEngine2 品質ゲート（合成データ・seed固定）===');
+  console.log('btDayCount=' + R.btDayCount + ' passingCount=' + R.passingCount + ' targetType=' + R.targetType);
+  check('1) passingCount > 0（MHゲート通過あり）', R.passingCount > 0, 'passingCount=' + R.passingCount);
+  check('2) min(仕込み台) > max(非仕込み台)', plantedScores.length > 0 && minPlanted > maxOther, 'min planted=' + minPlanted + ' / max other=' + maxOther);
+  check('3) スコア異なり数 >= ' + MIN_DISTINCT_SCORES + '（非二値）', distinctCount >= MIN_DISTINCT_SCORES, 'distinct=' + distinctCount);
+
+  console.log(failed === 0 ? '\nALL PASS' : '\n' + failed + ' CHECK(S) FAILED');
+  process.exit(failed ? 1 : 0);
 }
