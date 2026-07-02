@@ -209,22 +209,6 @@ body { background: var(--bg); color: var(--text); font-family: 'Noto Sans JP', s
       ※ 分析期間はバックテストに使う範囲です。店長交代など傾向が変わった時期を避けたいときは、開始日を後ろにずらして直近だけで計算できます（既定は全期間）。
     </div>
     <div id="target-result"></div>
-
-    <!-- AI分析セクション -->
-    <div class="card" style="margin-top:1.5rem;border-color:rgba(71,200,255,0.3)">
-      <div class="card-title" style="color:var(--accent2)">🤖 AI分析（Anthropic Claude）</div>
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap">
-        <div style="flex:1;min-width:200px">
-          <div class="setting-label" style="margin-bottom:4px">Anthropic APIキー</div>
-          <input type="password" class="setting-input" id="ai-api-key" placeholder="sk-ant-api03-..." style="font-family:monospace,monospace;font-size:11px" />
-        </div>
-        <button class="load-btn" style="width:auto;padding:8px 20px;margin-top:18px;background:var(--accent2);color:#000" onclick="runAiAnalysis()">AI分析を実行</button>
-      </div>
-      <div style="font-size:11px;color:var(--text2);margin-bottom:8px">
-        ※ APIキーはブラウザに自動保存されます。全データ（約${allData.length}件）をAIに送信して分析します。1回約数十円かかります。
-      </div>
-      <div id="ai-result"></div>
-    </div>
   </div>
 
   <!-- 傾向ドリフト -->
@@ -369,26 +353,14 @@ body { background: var(--bg); color: var(--text); font-family: 'Noto Sans JP', s
   </div>
 
   <!-- ローテーション分析 -->
-  <div class="page" id="page-rotation">
+    <div class="page" id="page-rotation">
     <div class="page-header">
       <div class="page-title">🔄 ローテーション<span>分析</span></div>
-      <div class="page-sub">前回高設定だった場所に今回も入るか（追従型）／避けるか（回避型）を判定します</div>
-    </div>
-
-    <div class="card">
-      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-        <label style="font-size:12px;color:var(--text2)">日の基準</label>
-        <select id="rotation-basis" style="background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:var(--radius);padding:8px 12px;font-size:13px">
-          <option value="special">特定日 → 次の特定日</option>
-          <option value="weekday">同じ曜日 → 次の同じ曜日</option>
-        </select>
-        <select id="rotation-weekday-pick" style="display:none;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:var(--radius);padding:8px 12px;font-size:13px">
-          <option value="0">日曜</option><option value="1">月曜</option><option value="2">火曜</option><option value="3">水曜</option><option value="4">木曜</option><option value="5">金曜</option><option value="6">土曜</option>
-        </select>
-      </div>
+      <div class="page-sub">前回高設定だった場所に今回も入るか（追従型）／避けるか（回避型）を判定します（基準：特定日 → 次の特定日）</div>
     </div>
 
     <!-- サマリー：追従率/回避率 -->
+
     <div class="card">
       <div class="card-title">この店のローテーション傾向</div>
       <div id="rotation-summary"></div>
@@ -474,20 +446,7 @@ body { background: var(--bg); color: var(--text); font-family: 'Noto Sans JP', s
   <div class="page" id="page-trend">
     <div class="page-header">
       <div class="page-title">📈 直近トレンド×<span>前回同種日</span></div>
-      <div class="page-sub">「前回もアツい/最近アツい/最近ボロ負け」の3つの予兆が、実際に高設定を当てたかを過去データで答え合わせし、本物の予兆だけで次の狙い目台を出します</div>
-    </div>
-
-    <div class="card">
-      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-        <label style="font-size:12px;color:var(--text2)">日の基準</label>
-        <select id="trend-basis" style="background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:var(--radius);padding:8px 12px;font-size:13px">
-          <option value="special">特定日 → 次の特定日</option>
-          <option value="weekday">同じ曜日 → 次の同じ曜日</option>
-        </select>
-        <select id="trend-weekday-pick" style="display:none;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:var(--radius);padding:8px 12px;font-size:13px">
-          <option value="0">日曜</option><option value="1">月曜</option><option value="2">火曜</option><option value="3">水曜</option><option value="4">木曜</option><option value="5">金曜</option><option value="6">土曜</option>
-        </select>
-      </div>
+      <div class="page-sub">「前回もアツい/最近アツい/最近ボロ負け」の3つの予兆が、実際に高設定を当てたかを過去データで答え合わせし、本物の予兆だけで次の狙い目台を出します（基準：特定日 → 次の特定日）</div>
     </div>
 
     <div class="card">
@@ -731,9 +690,6 @@ function switchCriteriaToSheet(name) {
 
 const savedUrl = localStorage.getItem(GAS_URL_KEY);
 if (savedUrl) document.getElementById('gas-url-input').value = savedUrl;
-const ANTHROPIC_KEY_STORAGE = 'anthropic_api_key';
-const savedAnthropicKey = localStorage.getItem(ANTHROPIC_KEY_STORAGE);
-if (savedAnthropicKey) document.getElementById('ai-api-key').value = savedAnthropicKey;
 // 初期表示（シート未選択時はデフォルト値）
 renderCriteriaTiers();
 updateCriteriaPreview();
@@ -2335,358 +2291,6 @@ function renderTarget() {
 
 
 
-async function runAiAnalysis() {
-  const apiKey = document.getElementById('ai-api-key').value.trim();
-  if (!apiKey) { alert('APIキーを入力してください'); return; }
-  if (!allData.length) { alert('先にデータを読み込んでください'); return; }
-  localStorage.setItem(ANTHROPIC_KEY_STORAGE, apiKey);
-
-  const aiResultEl = document.getElementById('ai-result');
-  aiResultEl.innerHTML = '<div style="color:var(--accent2);font-size:13px;padding:16px 0;line-height:2">⏳ アプリ側で集計を計算中...<br><span style="font-size:11px;color:var(--text2)">全分析項目を計算してからAIに送信します</span></div>';
-
-  // ── 基本情報 ──
-  const dates = [...new Set(allData.map(r => String(r['日付']).substring(0,10)))].sort();
-  const lastDate = dates[dates.length - 1];
-  const targetDateEl = document.getElementById('target-date');
-  const targetDate = targetDateEl.value || (() => {
-    const d = parseLocalDate(lastDate); d.setDate(d.getDate()+1);
-    return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
-  })();
-  const isSpecial = isSpecialDay(targetDate);
-  const targetWd = WEEKDAY_NAMES[parseLocalDate(targetDate).getDay()];
-  const targetWdIdx = parseLocalDate(targetDate).getDay();
-  const backtestDates = dates.slice(-21);
-  const ZONES = getZones();
-  const CORNER_MACHINES = getCornerMachines();
-  const allMachines = [...new Set(allData.map(r => parseInt(r['台番号'])))].sort((a,b)=>a-b);
-  const filteredData = allData.filter(r => {
-    const ds = String(r['日付']).substring(0,10);
-    return isSpecial ? isSpecialDay(ds) : !isSpecialDay(ds);
-  });
-
-  // ── 台・日付マップ ──
-  const machineDayMap = {};
-  allData.forEach(r => {
-    const m = String(r['台番号']), d = String(r['日付']).substring(0,10);
-    if (!machineDayMap[m]) machineDayMap[m] = {};
-    machineDayMap[m][d] = r;
-  });
-
-  // ── 日ごとの機種全体集計 ──
-  const dayMachineStat = {};
-  dates.forEach(d => {
-    const dayRows = allData.filter(r => String(r['日付']).substring(0,10) === d);
-    const machines = [...new Set(dayRows.map(r => parseInt(r['台番号'])))];
-    const totalCount = machines.length;
-    const diffSum = dayRows.reduce((s,r) => s+(parseFloat(r['差枚'])||0), 0);
-    const highCount = dayRows.filter(r=>isHighSetting(r)).length;
-    dayMachineStat[d] = {
-      diffSum: Math.round(diffSum),
-      avgDiff: totalCount>0 ? Math.round(diffSum/totalCount) : 0,
-      highCount, totalCount,
-      highRate: totalCount>0 ? (highCount/totalCount*100).toFixed(1) : '0.0'
-    };
-  });
-
-  // ── ① ゾーン・島分析 ──
-  const zoneStats = ZONES.map(z => {
-    const allRows  = allData.filter(r => z.machines.includes(parseInt(r['台番号'])));
-    const specRows = allRows.filter(r => isSpecialDay(String(r['日付']).substring(0,10)));
-    const normRows = allRows.filter(r => !isSpecialDay(String(r['日付']).substring(0,10)));
-    const recRows  = allRows.filter(r => backtestDates.includes(String(r['日付']).substring(0,10)));
-    const rate = arr => arr.length>0 ? (arr.filter(r=>isHighSetting(r)).length/arr.length*100).toFixed(1) : '-';
-    return z.label+'：全体'+rate(allRows)+'% 特定日'+rate(specRows)+'% 通常日'+rate(normRows)+'% 直近3週'+rate(recRows)+'%（'+recRows.filter(r=>isHighSetting(r)).length+'/'+recRows.length+'）';
-  }).join('\n');
-
-  // ── ② 末尾番号分析 ──
-  const suffixStats = Array.from({length:10},(_,i) => {
-    const sRows = filteredData.filter(r => parseInt(r['台番号'])%10===i);
-    const rate = sRows.length>0 ? (sRows.filter(r=>isHighSetting(r)).length/sRows.length*100).toFixed(1) : '-';
-    const recS = allData.filter(r => parseInt(r['台番号'])%10===i && backtestDates.includes(String(r['日付']).substring(0,10)));
-    const recRate = recS.length>0 ? (recS.filter(r=>isHighSetting(r)).length/recS.length*100).toFixed(1) : '-';
-    return '末尾'+i+'：'+(isSpecial?'特定日':'通常日')+rate+'%（'+sRows.filter(r=>isHighSetting(r)).length+'/'+sRows.length+'件）直近3週'+recRate+'%（'+recS.filter(r=>isHighSetting(r)).length+'/'+recS.length+'件）';
-  }).join('\n');
-
-  // ── ③ 曜日分析 ──
-  const wdStats = [0,1,2,3,4,5,6].map(wd => {
-    const wdRows = allData.filter(r => getWeekday(String(r['日付']).substring(0,10))===wd);
-    const specW  = wdRows.filter(r => isSpecialDay(String(r['日付']).substring(0,10)));
-    const normW  = wdRows.filter(r => !isSpecialDay(String(r['日付']).substring(0,10)));
-    const rate = arr => arr.length>0 ? (arr.filter(r=>isHighSetting(r)).length/arr.length*100).toFixed(1) : '-';
-    return WEEKDAY_NAMES[wd]+'曜：特定日'+rate(specW)+'%（'+specW.filter(r=>isHighSetting(r)).length+'/'+specW.length+'）通常日'+rate(normW)+'%（'+normW.filter(r=>isHighSetting(r)).length+'/'+normW.length+'）';
-  }).join('\n');
-
-  // ── ④ 時系列相関分析（10項目・前1〜31日単日＋前2〜31累計・絶対値＋機種内順位） ──
-  const corrItems = ['BB','RB','スタート','総回転数','合成確率','BB確率','RB確率','最大枚数','前日最終','差枚'];
-
-  // 単日（前1〜31日）
-  const singleLines = [];
-  for (let n=1; n<=31; n++) {
-    const highVals={}, normVals={};
-    const highRanks={}, normRanks={};
-    corrItems.forEach(item => { highVals[item]=[]; normVals[item]=[]; highRanks[item]=[]; normRanks[item]=[]; });
-
-    allData.forEach(r => {
-      const m = String(r['台番号']), d = String(r['日付']).substring(0,10);
-      const idx = dates.indexOf(d);
-      if (idx-n < 0) return;
-      const prevDate = dates[idx-n];
-      const prevRow = machineDayMap[m]?.[prevDate];
-      if (!prevRow||(parseFloat(prevRow['総回転数'])||0)<100) return;
-
-      // 同日の全台の値（順位計算用）
-      const allSameDayVals = {};
-      corrItems.forEach(item => {
-        const vals = allMachines.map(om => {
-          const or = machineDayMap[String(om)]?.[prevDate];
-          if (!or||(parseFloat(or['総回転数'])||0)<100) return null;
-          return (['合成確率','BB確率','RB確率'].includes(item)) ? parseFraction(or[item]) : parseFloat(or[item]);
-        }).filter(v => v!=null && !isNaN(v));
-        allSameDayVals[item] = vals;
-      });
-
-      corrItems.forEach(item => {
-        const v = (['合成確率','BB確率','RB確率'].includes(item)) ? parseFraction(prevRow[item]) : parseFloat(prevRow[item]);
-        if (v==null||isNaN(v)) return;
-        // 絶対値
-        if (isHighSetting(r)) highVals[item].push(v); else normVals[item].push(v);
-        // 機種内順位（昇順：1位が最小値）
-        const sorted = [...allSameDayVals[item]].sort((a,b)=>a-b);
-        const rank = sorted.indexOf(v)+1;
-        const pct = allSameDayVals[item].length>0 ? (rank/allSameDayVals[item].length*100).toFixed(0) : null;
-        if (pct!=null) { if (isHighSetting(r)) highRanks[item].push(parseFloat(pct)); else normRanks[item].push(parseFloat(pct)); }
-      });
-    });
-
-    const avgFn = arr => arr.length>0 ? arr.reduce((s,v)=>s+v,0)/arr.length : null;
-    const stdFn = arr => {
-      if (arr.length<2) return null;
-      const m = arr.reduce((s,v)=>s+v,0)/arr.length;
-      return Math.sqrt(arr.reduce((s,v)=>s+Math.pow(v-m,2),0)/arr.length);
-    };
-    const diffs = corrItems.map(item => {
-      const hv=avgFn(highVals[item]), nv=avgFn(normVals[item]);
-      const hr=avgFn(highRanks[item]), nr=avgFn(normRanks[item]);
-      // Zスコア差で標準化（単位の違いを吸収）
-      const allVals = [...highVals[item], ...normVals[item]];
-      const allMean = avgFn(allVals);
-      const allStd = stdFn(allVals);
-      let zDiff = 0;
-      if (hv!=null&&nv!=null&&allStd!=null&&allStd>0) {
-        zDiff = Math.abs(((hv-allMean)/allStd) - ((nv-allMean)/allStd));
-      }
-      const zDiffPct = parseFloat(Math.min(zDiff*50, 100).toFixed(1));
-      const rankDiff = (hr!=null&&nr!=null) ? Math.abs(hr-nr) : 0;
-      return { item, hv:hv!=null?parseFloat(hv.toFixed(1)):null, nv:nv!=null?parseFloat(nv.toFixed(1)):null,
-               hr:hr!=null?parseFloat(hr.toFixed(1)):null, nr:nr!=null?parseFloat(nr.toFixed(1)):null,
-               zDiff:parseFloat(zDiff.toFixed(3)), zDiffPct, rankDiff, maxDiff: Math.max(zDiffPct, rankDiff) };
-    }).filter(d => d.maxDiff >= 10).sort((a,b)=>b.maxDiff-a.maxDiff);
-
-    if (diffs.length>0) {
-      const parts = diffs.slice(0,3).map(d => {
-        const zStr = d.zDiff>0 ? d.item+'[Z差'+d.zDiff+' 高平均'+d.hv+'/非高平均'+d.nv+']' : '';
-        const rankStr = (d.hr!=null&&d.nr!=null) ? '順位%[高設定'+d.hr+'%ile/非高設定'+d.nr+'%ile]' : '';
-        return [zStr, rankStr].filter(Boolean).join(' ');
-      }).join(' / ');
-      singleLines.push('単日'+n+'日前：'+parts);
-    }
-  }
-
-  // 累計（前2〜31日）
-  const cumLines = [];
-  for (let n=2; n<=31; n++) {
-    const highCum={}, normCum={};
-    corrItems.forEach(item => { highCum[item]=[]; normCum[item]=[]; });
-
-    allData.forEach(r => {
-      const m = String(r['台番号']), d = String(r['日付']).substring(0,10);
-      const idx = dates.indexOf(d);
-      if (idx<n) return;
-      const cumVals={};
-      corrItems.forEach(item => { cumVals[item]=[]; });
-      for (let k=1; k<=n; k++) {
-        if (idx-k<0) break;
-        const kr = machineDayMap[m]?.[dates[idx-k]];
-        if (!kr||(parseFloat(kr['総回転数'])||0)<100) continue;
-        corrItems.forEach(item => {
-          const v = (['合成確率','BB確率','RB確率'].includes(item)) ? parseFraction(kr[item]) : parseFloat(kr[item]);
-          if (v!=null&&!isNaN(v)) cumVals[item].push(v);
-        });
-      }
-      corrItems.forEach(item => {
-        if (!cumVals[item].length) return;
-        const sum = cumVals[item].reduce((s,v)=>s+v,0);
-        if (isHighSetting(r)) highCum[item].push(sum); else normCum[item].push(sum);
-      });
-    });
-
-    const avgFn2 = arr => arr.length>0 ? arr.reduce((s,v)=>s+v,0)/arr.length : null;
-    const stdFn2 = arr => {
-      if (arr.length<2) return null;
-      const m2 = arr.reduce((s,v)=>s+v,0)/arr.length;
-      return Math.sqrt(arr.reduce((s,v)=>s+Math.pow(v-m2,2),0)/arr.length);
-    };
-    const diffs = corrItems.map(item => {
-      const hv=avgFn2(highCum[item]), nv=avgFn2(normCum[item]);
-      if (hv==null||nv==null) return null;
-      const allVals = [...highCum[item], ...normCum[item]];
-      const allMean = avgFn2(allVals);
-      const allStd = stdFn2(allVals);
-      if (!allStd||allStd===0) return null;
-      const zDiff = Math.abs(((hv-allMean)/allStd) - ((nv-allMean)/allStd));
-      const zDiffPct = parseFloat(Math.min(zDiff*50, 100).toFixed(1));
-      if (zDiffPct < 10) return null;
-      return { item, hv:parseFloat(hv.toFixed(1)), nv:parseFloat(nv.toFixed(1)), zDiff:parseFloat(zDiff.toFixed(3)), zDiffPct };
-    }).filter(Boolean).sort((a,b)=>b.zDiffPct-a.zDiffPct);
-
-    if (diffs.length>0) {
-      const parts = diffs.slice(0,3).map(d => d.item+'[累計Z差'+d.zDiff+' 高平均'+d.hv+'/非高平均'+d.nv+']').join(' / ');
-      cumLines.push('累計前'+n+'日：'+parts);
-    }
-  }
-
-  const corrSummary = '【単日（Zスコア差・標準化済み）】\n'+(singleLines.join('\n')||'有意な差なし')+'\n【累計前2〜31日（Zスコア差・標準化済み）】\n'+(cumLines.join('\n')||'有意な差なし');
-
-  const heatmapTop = [];
-  allMachines.forEach(m => {
-    const wdRows = filteredData.filter(r => parseInt(r['台番号'])===m && getWeekday(String(r['日付']).substring(0,10))===targetWdIdx);
-    if (wdRows.length>=3) {
-      const high = wdRows.filter(r=>isHighSetting(r)).length;
-      const rate = (high/wdRows.length*100).toFixed(1);
-      if (parseFloat(rate)>=20) heatmapTop.push({m,rate,high,total:wdRows.length});
-    }
-  });
-  heatmapTop.sort((a,b)=>parseFloat(b.rate)-parseFloat(a.rate));
-  const heatmapSummary = heatmapTop.length>0
-    ? heatmapTop.slice(0,15).map(h=>'台'+h.m+'：'+targetWd+'曜'+h.rate+'%（'+h.high+'/'+h.total+'）').join('\n')
-    : '対象曜日のデータが少ないため省略';
-
-  // ── ⑦ 機種差枚×時系列相関（前1〜14日・単日＋累計） ──
-  const machineCorrLines = [];
-  for (let n=1; n<=14; n++) {
-    const highDiff=[], normDiff=[], highAvg=[], normAvg=[];
-    allData.forEach(r => {
-      const d = String(r['日付']).substring(0,10);
-      const idx = dates.indexOf(d);
-      if (idx-n<0) return;
-      const ps = dayMachineStat[dates[idx-n]];
-      if (!ps||ps.totalCount<3) return;
-      if (isHighSetting(r)) { highDiff.push(ps.diffSum); highAvg.push(ps.avgDiff); }
-      else { normDiff.push(ps.diffSum); normAvg.push(ps.avgDiff); }
-    });
-    const avg = arr => arr.length>0?(arr.reduce((s,v)=>s+v,0)/arr.length).toFixed(0):'-';
-    machineCorrLines.push(n+'日前：差枚合計[高設定:'+avg(highDiff)+' 非高設定:'+avg(normDiff)+'] 平均差枚/台[高設定:'+avg(highAvg)+' 非高設定:'+avg(normAvg)+']');
-  }
-  const machineCumCorrLines = [];
-  for (let n=2; n<=14; n++) {
-    const highCum=[], normCum=[];
-    allData.forEach(r => {
-      const d = String(r['日付']).substring(0,10);
-      const idx = dates.indexOf(d);
-      if (idx<n) return;
-      let sum=0, cnt=0;
-      for (let k=1; k<=n; k++) {
-        if (idx-k<0) break;
-        const ps = dayMachineStat[dates[idx-k]];
-        if (ps&&ps.totalCount>=3) { sum+=ps.diffSum; cnt++; }
-      }
-      if (cnt===0) return;
-      if (isHighSetting(r)) highCum.push(sum); else normCum.push(sum);
-    });
-    const avg = arr => arr.length>0?(arr.reduce((s,v)=>s+v,0)/arr.length).toFixed(0):'-';
-    machineCumCorrLines.push('累計前'+n+'日：差枚合計[高設定:'+avg(highCum)+' 非高設定:'+avg(normCum)+']');
-  }
-  const machineCorrSummary = '【単日】\n'+machineCorrLines.join('\n')+'\n【累計前2〜14日】\n'+machineCumCorrLines.join('\n');
-
-  // ── ⑧ 機種差枚・区分別集計 ──
-  function calcTabStats(tab) {
-    const tabDates = dates.filter(d => {
-      const day = parseLocalDate(d).getDate();
-      if (tab==='suffix1') return [1,11,21].includes(day);
-      if (tab==='suffix3') return [3,13,23].includes(day);
-      if (tab==='suffix9') return [9,19,29].includes(day);
-      if (tab==='day27')   return day===27;
-      if (tab==='normal')  return !isSpecialDay(d);
-      return false;
-    });
-    if (!tabDates.length) return null;
-    const rows = tabDates.map(d=>dayMachineStat[d]).filter(Boolean);
-    const avg = arr => arr.length>0?(arr.reduce((s,v)=>s+v,0)/arr.length).toFixed(0):'-';
-    const rateAvg = arr => arr.length>0?(arr.reduce((s,r)=>s+parseFloat(r.highRate),0)/arr.length).toFixed(1):'-';
-    const rec=rows.slice(-3), prev=rows.slice(0,-3);
-    return {count:rows.length, avgDiff:avg(rows.map(r=>r.avgDiff)), avgRate:rateAvg(rows),
-            recAvgDiff:avg(rec.map(r=>r.avgDiff)), prevAvgDiff:avg(prev.map(r=>r.avgDiff)),
-            recRate:rateAvg(rec), prevRate:rateAvg(prev)};
-  }
-  const tabLabels = {suffix1:'末尾1（1・11・21日）',suffix3:'末尾3（3・13・23日）',suffix9:'末尾9（9・19・29日）',day27:'27日',normal:'通常日'};
-  const machineTrendStats = Object.entries(tabLabels).map(([tab,label]) => {
-    const s=calcTabStats(tab);
-    if (!s) return label+'：データなし';
-    return label+'（'+s.count+'件）：平均差枚/台'+s.avgDiff+' 高設定率'+s.avgRate+'% ／ 直近3回[平均差枚'+s.recAvgDiff+' 高設定率'+s.recRate+'%] vs 以前[平均差枚'+s.prevAvgDiff+' 高設定率'+s.prevRate+'%]';
-  }).join('\n');
-  const normalDates2 = dates.filter(d=>!isSpecialDay(d));
-  const rec10=normalDates2.slice(-10).map(d=>dayMachineStat[d]).filter(Boolean);
-  const prev25=normalDates2.slice(-35,-10).map(d=>dayMachineStat[d]).filter(Boolean);
-  const avgF = arr => arr.length>0?(arr.reduce((s,r)=>s+r.avgDiff,0)/arr.length).toFixed(0):'-';
-  const rateF = arr => arr.length>0?(arr.reduce((s,r)=>s+parseFloat(r.highRate),0)/arr.length).toFixed(1):'-';
-  const changeDetect = '通常日変化検知：直近10日[平均差枚/台'+avgF(rec10)+' 高設定率'+rateF(rec10)+'%（'+rec10.length+'件）] vs 前25日[平均差枚/台'+avgF(prev25)+' 高設定率'+rateF(prev25)+'%（'+prev25.length+'件）]';
-
-  // ── バックテスト ──
-  const backtestSummary = backtestDates.map(d => {
-    const dayRows = allData.filter(r => String(r['日付']).substring(0,10)===d);
-    const highMs = dayRows.filter(r=>isHighSetting(r)).map(r=>r['台番号']);
-    const wd = WEEKDAY_NAMES[getWeekday(d)];
-    const sp = isSpecialDay(d)?'特定日':'通常日';
-    const ms = dayMachineStat[d];
-    const mInfo = ms?' 機種差枚合計'+ms.diffSum:'';
-    return d+'('+wd+'/'+sp+')'+mInfo+'：高設定台['+( highMs.join(',')||'なし')+']';
-  }).join('\n');
-
-  const criteriaInfo = formatCriteriaInfo(criteria, isAtMachine());
-
-  aiResultEl.innerHTML = '<div style="color:var(--accent2);font-size:13px;padding:16px 0;line-height:2">⏳ 集計完了。AIに送信中です...<br><span style="font-size:11px;color:var(--text2)">応答まで30秒〜1分かかります</span></div>';
-
-  const prompt = 'あなたはパチンコ・スロットの高設定台予測の専門家です。\n以下はスロット台の実データを8つの観点で集計した分析レポートです。\n\n■ 基本情報\n機種：'+sheetName+'\n推薦対象日：'+targetDate+'（'+targetWd+'曜日・'+(isSpecial?'特定日':'通常日')+'）\n高設定判定基準：'+criteriaInfo+'\n特定日：毎月1・3・9・11・13・19・21・23・27・29日\nデータ期間：'+dates[0]+'〜'+lastDate+'（'+dates.length+'日間）\n台数：'+allMachines.length+'台\n\n■ ゾーン構成と角台\n'+ZONES.map(z=>z.label+'：台番号'+z.machines.join(',')).join('\n')+'\n角台：'+CORNER_MACHINES.join(',')+'\n\n==============================================\n【① ゾーン・島分析】\n'+zoneStats+'\n\n【② 末尾番号傾向】（'+(isSpecial?'特定日':'通常日')+'・全期間＋直近3週間）\n'+suffixStats+'\n\n【③ 曜日別高設定率】\n'+wdStats+'\n\n【④ 時系列相関分析】（10項目・単日前1〜31日＋累計前2〜31日・差10%以上のみ表示）\n絶対値比較と機種内パーセンタイル順位（%ile）の両方を掲載\n'+corrSummary+'\n\n【⑥ 曜日×台番号ヒートマップ】（'+targetWd+'曜日・高設定率20%以上）\n'+heatmapSummary+'\n\n【⑦ 機種差枚×時系列相関】（高設定台の前N日の機種全体差枚傾向）\n'+machineCorrSummary+'\n\n【⑧ 機種差枚・区分別集計】\n'+machineTrendStats+'\n'+changeDetect+'\n\n【直近3週間バックテスト】\n'+backtestSummary+'\n==============================================\n\n## 依頼内容\n\n### STEP1：バックテスト検証（直近3週間）\n直近3週間の実際の高設定台と①〜⑧を照合してください。\n特に④の時系列相関と⑦の機種差枚相関で有効なパターンを特定してください。\n全期間vs直近3週間で傾向変化があれば明示してください。\n\n### STEP2：最も高設定が期待できる条件TOP3\n①〜⑧の分析から「翌日高設定が最も期待できる条件の組み合わせ」をTOP3で示してください。\n例：「前日差枚が機種内ワースト10%ile以内 かつ 末尾7 かつ 月曜日」のような複合条件で。\n各条件について過去データでの該当率・高設定率を具体的な数字で示してください。\n\n### STEP3：'+targetDate+'（'+targetWd+'曜日・'+(isSpecial?'特定日':'通常日')+'）の狙い目台TOP3推薦\n各台について以下を明記してください：\n- 台番号\n- STEP2の条件への合致度\n- 根拠（①〜⑧のどの要素が決め手か、具体的な数字で）\n- 信頼度（高/中/低）とその理由\n\n### 最後に\n- 今日特に注目すべき傾向\n- 分析の限界・注意点';
-
-  try {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true'
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 4000,
-        messages: [{ role: 'user', content: prompt }]
-      })
-    });
-    if (!response.ok) {
-      const err = await response.json();
-      throw new Error(err.error?.message||'APIエラー: '+response.status);
-    }
-    const data = await response.json();
-    const text = data.content[0].text;
-    const html = text
-      .replace(/^## (.+)$/gm, '<h3 style="color:var(--accent2);font-size:14px;margin:1.2rem 0 0.5rem;border-bottom:1px solid var(--border);padding-bottom:4px">$1</h3>')
-      .replace(/^### (.+)$/gm, '<h4 style="color:var(--accent);font-size:13px;margin:0.8rem 0 0.3rem">$1</h4>')
-      .replace(/\*\*(.+?)\*\*/g, '<strong style="color:var(--text)">$1</strong>')
-      .replace(/^- (.+)$/gm, '<div style="padding:3px 0 3px 14px;border-left:2px solid var(--border);margin:3px 0;font-size:12px;color:var(--text2)">$1</div>')
-      .replace(/\\n\\n/g, '<br>')
-      .replace(/\\n/g, '<br>');
-    const inputTokens = data.usage?.input_tokens||0;
-    const outputTokens = data.usage?.output_tokens||0;
-    const cost = ((inputTokens*3+outputTokens*15)/1000000).toFixed(4);
-    aiResultEl.innerHTML = '<div style="background:var(--surface2);border-radius:var(--radius);padding:1rem;border:1px solid rgba(71,200,255,0.2)"><div style="font-size:11px;color:var(--text2);margin-bottom:12px;display:flex;gap:16px;flex-wrap:wrap;padding-bottom:8px;border-bottom:1px solid var(--border)"><span>📊 入力トークン：'+inputTokens.toLocaleString()+'</span><span>📝 出力トークン：'+outputTokens.toLocaleString()+'</span><span>💰 推定コスト：$'+cost+'（約'+Math.round(cost*150)+'円）</span></div><div style="font-size:13px;line-height:1.9;color:var(--text2)">'+html+'</div></div>';
-  } catch(err) {
-    aiResultEl.innerHTML = '<div style="color:var(--error);font-size:13px;padding:12px">エラーが発生しました：'+err.message+'<br><span style="font-size:11px;color:var(--text2)">APIキーを確認するか、しばらく待ってから再試行してください。</span></div>';
-  }
-}
-
-
-
 function renderSuffix() {
   const sd={};
   for(let i=0;i<=9;i++) sd[i]={special:{total:0,high:0},normal:{total:0,high:0}};
@@ -3671,32 +3275,19 @@ function renderDayMapBody(targetDate, ZONES, CORNER_MACHINES) {
 // ── ローテーション分析 ──────────────────────────────
 function renderRotation() {
   if (!allData.length) return;
-  const basisSel = document.getElementById('rotation-basis');
-  const wdPick = document.getElementById('rotation-weekday-pick');
-  basisSel.onchange = () => {
-    wdPick.style.display = basisSel.value === 'weekday' ? '' : 'none';
-    renderRotationBody();
-  };
-  wdPick.onchange = renderRotationBody;
-  wdPick.style.display = basisSel.value === 'weekday' ? '' : 'none';
   renderRotationBody();
 }
 
 function renderRotationBody() {
-  const basis = document.getElementById('rotation-basis').value; // 'special' | 'weekday'
-  const pickedWd = parseInt(document.getElementById('rotation-weekday-pick').value);
   const CORNER_MACHINES = getCornerMachines();
 
   // 全日付（昇順）
   const allDates = [...new Set(allData.map(r => String(r['日付']).substring(0,10)))].sort();
 
-  // 基準に合う「対象日」だけを抽出
-  const targetDates = allDates.filter(d => {
-    if (basis === 'special') return isSpecialDay(d);
-    return getWeekday(d) === pickedWd;
-  });
+  // 特定日 → 次の特定日 だけを対象日として抽出
+  const targetDates = allDates.filter(d => isSpecialDay(d));
 
-  const basisLabel = basis === 'special' ? '特定日' : WEEKDAY_NAMES[pickedWd]+'曜日';
+  const basisLabel = '特定日';
 
   if (targetDates.length < 2) {
     const msg = `<div style="color:var(--text2);font-size:13px;padding:12px">${basisLabel}のデータが2回分以上ないと追跡できません（現在${targetDates.length}回分）。</div>`;
@@ -4141,17 +3732,10 @@ function parseDiffVal(v){ return parseFloat(String(v==null?'':v).replace(/,/g,''
 
 function renderTrend() {
   if (!allData.length) return;
-  const basisSel = document.getElementById('trend-basis');
-  const wdPick = document.getElementById('trend-weekday-pick');
-  basisSel.onchange = () => { wdPick.style.display = basisSel.value==='weekday'?'':'none'; renderTrendBody(); };
-  wdPick.onchange = renderTrendBody;
-  wdPick.style.display = basisSel.value==='weekday'?'':'none';
   renderTrendBody();
 }
 
 function renderTrendBody() {
-  const basis = document.getElementById('trend-basis').value;
-  const pickedWd = parseInt(document.getElementById('trend-weekday-pick').value);
   const CORNER_MACHINES = getCornerMachines();
 
   const allDates = [...new Set(allData.map(r=>String(r['日付']).substring(0,10)))].sort();
@@ -4165,8 +3749,8 @@ function renderTrendBody() {
     md[m][d] = { high: isHighSetting(r), diff: parseDiffVal(r['差枚']) };
   });
 
-  const targetDates = allDates.filter(d => basis==='special' ? isSpecialDay(d) : getWeekday(d)===pickedWd);
-  const basisLabel = basis==='special' ? '特定日' : WEEKDAY_NAMES[pickedWd]+'曜日';
+  const targetDates = allDates.filter(d => isSpecialDay(d));
+  const basisLabel = '特定日';
 
   if (targetDates.length < 2) {
     document.getElementById('trend-backtest').innerHTML = '<div style="color:var(--text2);font-size:13px;padding:8px">' + basisLabel + 'が2回分そろっていないため、答え合わせができません。</div>';
