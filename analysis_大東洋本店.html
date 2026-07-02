@@ -156,13 +156,27 @@ body { background: var(--bg); color: var(--text); font-family: 'Noto Sans JP', s
       <div class="page-title">🎯 明日の<span>狙い目台</span></div>
       <div class="page-sub" id="target-sub">全分析要素を統合したスコアで狙い目台を推薦します</div>
     </div>
-    <div class="card" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+    <div class="card" style="display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap">
       <div>
         <div class="setting-label" style="margin-bottom:4px">対象日</div>
-        <input type="date" class="setting-input" id="target-date" style="width:160px" />
+        <input type="date" class="setting-input" id="target-date" style="width:150px" />
       </div>
-      <button class="load-btn" style="width:auto;padding:8px 20px;margin-top:18px" onclick="renderTarget()">スコア計算</button>
-      <div id="target-daytype-badge" style="margin-top:18px;font-size:12px;padding:4px 10px;border-radius:4px;border:1px solid var(--border)"></div>
+      <div style="display:flex;align-items:flex-end;gap:6px">
+        <div>
+          <div class="setting-label" style="margin-bottom:4px">分析期間（開始）</div>
+          <input type="date" class="setting-input" id="target-from" style="width:140px" />
+        </div>
+        <span style="color:var(--text2);padding-bottom:8px">〜</span>
+        <div>
+          <div class="setting-label" style="margin-bottom:4px">終了</div>
+          <input type="date" class="setting-input" id="target-to" style="width:140px" />
+        </div>
+      </div>
+      <button class="load-btn" style="width:auto;padding:8px 20px" onclick="renderTarget()">スコア計算</button>
+      <div id="target-daytype-badge" style="font-size:12px;padding:6px 10px;border-radius:4px;border:1px solid var(--border)"></div>
+    </div>
+    <div style="font-size:11px;color:var(--text2);margin:-8px 0 12px;line-height:1.6">
+      ※ 分析期間はバックテストに使う範囲です。店長交代など傾向が変わった時期を避けたいときは、開始日を後ろにずらして直近だけで計算できます（既定は全期間）。
     </div>
     <div id="target-result"></div>
   </div>
@@ -933,298 +947,339 @@ function renderMachineTrend() {
   });
 }
 
+function driftFmt(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+
+// ── 予測統合エンジン（案Y土台＋その日の全体率でMH層別正規化）──────────
+/* =========================================================================
+   予測統合エンジン v2（案Y土台 ＋ その日の全体率で正規化）
+   - engine_core.js の予兆・タイプ別バックテストを継承。
+   - 変更点：予兆あり台を「その日の店全体の高設定率(base rate)」と比較する。
+     lift = 観測高設定数 / 期待高設定数(= Σ その日のbase rate)。
+     z    = (観測 - 期待) / sqrt(Σ p(1-p))  ← ポアソン二項の正規近似。
+   - 手動期間スイッチ：バックテスト母集団を period で限定（全期間/週数/任意範囲）。
+   - forward-only（対象日より前の情報のみ）／信頼度補正 count/(count+5)。
+   ========================================================================= */
+(function (root, factory) {
+  if (typeof module !== 'undefined' && module.exports) module.exports = factory();
+  else root.PredictionEngine2 = factory();
+})(typeof self !== 'undefined' ? self : this, function () {
+
+  function num(v){ if(v==null) return 0; var n=parseFloat(String(v).replace(/,/g,'')); return isNaN(n)?0:n; }
+  function pDate(ds){ var p=String(ds).substring(0,10).split('-'); return new Date(+p[0],+p[1]-1,+p[2]); }
+  function fmt(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+  function addDays(ds,n){ var d=pDate(ds); d.setDate(d.getDate()+n); return fmt(d); }
+
+  function terciles(values){ var s=values.slice().sort(function(a,b){return a-b;}); if(s.length<3) return null; return {q1:s[Math.floor(s.length/3)],q2:s[Math.floor(s.length*2/3)]}; }
+
+  function buildContext(allData, deps){
+    var isHigh=deps.isHighSetting, isSpecial=deps.isSpecialDay;
+    var dates=Array.from(new Set(allData.map(function(r){return String(r['日付']).substring(0,10);}))).sort();
+    var machines=Array.from(new Set(allData.map(function(r){return parseInt(r['台番号']);}))).sort(function(a,b){return a-b;});
+    var map={};
+    allData.forEach(function(r){ var m=parseInt(r['台番号']),d=String(r['日付']).substring(0,10); (map[m]=map[m]||{})[d]=r; });
+    var dayInfo={};
+    dates.forEach(function(d){
+      var present=allData.filter(function(r){return String(r['日付']).substring(0,10)===d && num(r['総回転数'])>=100;});
+      var hi=present.filter(isHigh).length;
+      var diffs=present.map(function(r){return num(r['差枚']);});
+      dayInfo[d]={ rows:present, present:present.length, high:hi,
+                   baseRate: present.length? hi/present.length : 0, diffTerc:terciles(diffs) };
+    });
+    return { dates:dates, machines:machines, map:map, dayInfo:dayInfo, isHigh:isHigh, isSpecial:isSpecial };
+  }
+
+  function recentNormalDays(ctx,m,beforeIdx,k){
+    var out=[];
+    for(var i=beforeIdx-1;i>=0&&out.length<k;i--){
+      var d=ctx.dates[i]; if(ctx.isSpecial(d)) continue;
+      var row=ctx.map[m]&&ctx.map[m][d];
+      if(row&&num(row['総回転数'])>=100) out.push(d);
+    }
+    return out;
+  }
+  function lastSpecialDay(ctx,m,beforeIdx){
+    for(var i=beforeIdx-1;i>=0;i--){
+      var d=ctx.dates[i]; if(!ctx.isSpecial(d)) continue;
+      var row=ctx.map[m]&&ctx.map[m][d];
+      if(row&&num(row['総回転数'])>=100) return d;
+    }
+    return null;
+  }
+  function machineRanking(ctx,beforeIdx,valueFn){
+    var vals=[];
+    ctx.machines.forEach(function(m){ var v=valueFn(m); if(v!=null&&!isNaN(v)) vals.push({m:m,v:v}); });
+    if(vals.length<3) return {};
+    vals.sort(function(a,b){return a.v-b.v;});
+    var res={};
+    vals.forEach(function(o,i){
+      var pct=i/(vals.length-1);
+      var terc=i<vals.length/3?'bottom':i<vals.length*2/3?'mid':'top';
+      res[o.m]={rankPct:pct,tercile:terc,v:o.v};
+    });
+    return res;
+  }
+
+  // clamp helper
+  function clamp01(x){ return x<0?0:(x>1?1:x); }
+
+  var OMENS=[
+    { key:'follow', label:'前回特定日に高設定（追従）',
+      signal:function(ctx,m,bi){ var d=lastSpecialDay(ctx,m,bi); return d?ctx.isHigh(ctx.map[m][d]):false; },
+      grade:function(ctx,m,bi){ return this.signal(ctx,m,bi)?1:0; } },
+    { key:'recentHot', label:'直近3通常日で1回以上高設定',
+      signal:function(ctx,m,bi){ return recentNormalDays(ctx,m,bi,3).some(function(d){return ctx.isHigh(ctx.map[m][d]);}); },
+      grade:function(ctx,m,bi){ var ds=recentNormalDays(ctx,m,bi,3); if(!ds.length)return 0;
+        var c=ds.filter(function(d){return ctx.isHigh(ctx.map[m][d]);}).length; return c/3; } },
+    { key:'holdTop', label:'前日が特定日＆高設定＆差枚上位（据え置き上位）',
+      signal:function(ctx,m,bi){ if(bi<1)return false; var prev=ctx.dates[bi-1]; if(!ctx.isSpecial(prev))return false;
+        var row=ctx.map[m]&&ctx.map[m][prev]; if(!row||num(row['総回転数'])<100||!ctx.isHigh(row))return false;
+        var info=ctx.dayInfo[prev]; return info&&info.diffTerc? num(row['差枚'])>=info.diffTerc.q2 : false; },
+      grade:function(ctx,m,bi){ return this.signal(ctx,m,bi)?1:0; } },
+    { key:'holdBottom', label:'前日が特定日＆高設定＆差枚下位（凹み据え置き）',
+      signal:function(ctx,m,bi){ if(bi<1)return false; var prev=ctx.dates[bi-1]; if(!ctx.isSpecial(prev))return false;
+        var row=ctx.map[m]&&ctx.map[m][prev]; if(!row||num(row['総回転数'])<100||!ctx.isHigh(row))return false;
+        var info=ctx.dayInfo[prev]; return info&&info.diffTerc? num(row['差枚'])<=info.diffTerc.q1 : false; },
+      grade:function(ctx,m,bi){ return this.signal(ctx,m,bi)?1:0; } },
+    { key:'rb3', label:'直近3日のRB確率が機種内ベスト1/3（最重視）',
+      signal:function(ctx,m,bi){ var rank=ctx._rb3[bi]||(ctx._rb3[bi]=machineRanking(ctx,bi,function(mm){
+          var ds=recentNormalDays(ctx,mm,bi,3); if(!ds.length)return null; var rb=0,rot=0;
+          ds.forEach(function(d){var r=ctx.map[mm][d];rb+=num(r['RB']);rot+=num(r['総回転数']);});
+          return (rot===0||rb===0)?null:rot/rb; })); var o=rank[m]; return !!o&&o.tercile==='bottom'; },
+      grade:function(ctx,m,bi){ var rank=ctx._rb3[bi]; if(!rank)this.signal(ctx,m,bi),rank=ctx._rb3[bi];
+        var o=rank[m]; if(!o||o.tercile!=='bottom')return 0; return clamp01((1/3 - o.rankPct)/(1/3)); } },
+    { key:'gosei3', label:'直近3日の合成確率が機種内ベスト1/3',
+      signal:function(ctx,m,bi){ var rank=ctx._go3[bi]||(ctx._go3[bi]=machineRanking(ctx,bi,function(mm){
+          var ds=recentNormalDays(ctx,mm,bi,3); if(!ds.length)return null; var bo=0,rot=0;
+          ds.forEach(function(d){var r=ctx.map[mm][d];bo+=num(r['BB'])+num(r['RB']);rot+=num(r['総回転数']);});
+          return (rot===0||bo===0)?null:rot/bo; })); var o=rank[m]; return !!o&&o.tercile==='bottom'; },
+      grade:function(ctx,m,bi){ var rank=ctx._go3[bi]; if(!rank)this.signal(ctx,m,bi),rank=ctx._go3[bi];
+        var o=rank[m]; if(!o||o.tercile!=='bottom')return 0; return clamp01((1/3 - o.rankPct)/(1/3)); } },
+    { key:'loser3', label:'直近3日の差枚がワースト30%（仕込み仮説）',
+      signal:function(ctx,m,bi){ var rank=ctx._lo3[bi]||(ctx._lo3[bi]=machineRanking(ctx,bi,function(mm){
+          var ds=recentNormalDays(ctx,mm,bi,3); if(!ds.length)return null; var s=0;
+          ds.forEach(function(d){s+=num(ctx.map[mm][d]['差枚']);}); return s; })); var o=rank[m]; return !!o&&o.rankPct<=0.30; },
+      grade:function(ctx,m,bi){ var rank=ctx._lo3[bi]; if(!rank)this.signal(ctx,m,bi),rank=ctx._lo3[bi];
+        var o=rank[m]; if(!o||o.rankPct>0.30)return 0; return clamp01((0.30 - o.rankPct)/0.30); } },
+    { key:'highRot', label:'直近3日の総回転数が機種内上位1/3（高稼働）',
+      signal:function(ctx,m,bi){ var rank=ctx._rot[bi]||(ctx._rot[bi]=machineRanking(ctx,bi,function(mm){
+          var ds=recentNormalDays(ctx,mm,bi,3); if(!ds.length)return null; var s=0;
+          ds.forEach(function(d){s+=num(ctx.map[mm][d]['総回転数']);}); return s; })); var o=rank[m]; return !!o&&o.tercile==='top'; },
+      grade:function(ctx,m,bi){ var rank=ctx._rot[bi]; if(!rank)this.signal(ctx,m,bi),rank=ctx._rot[bi];
+        var o=rank[m]; if(!o||o.tercile!=='top')return 0; return clamp01((o.rankPct - 2/3)/(1/3)); } },
+    { key:'gap', label:'RB良好なのに回ってない（乖離＝伸びしろ）',
+      signal:function(ctx,m,bi){ var rb=ctx._rb3[bi],rot=ctx._rot[bi]; if(!rb||!rot)return false;
+        var a=rb[m],b=rot[m]; return !!a&&!!b&&a.tercile==='bottom'&&b.rankPct<=0.5; },
+      grade:function(ctx,m,bi){ var rb=ctx._rb3[bi],rot=ctx._rot[bi]; if(!rb||!rot){this.signal(ctx,m,bi);rb=ctx._rb3[bi];rot=ctx._rot[bi];}
+        if(!rb||!rot)return 0; var a=rb[m],b=rot[m]; if(!a||!b||a.tercile!=='bottom'||b.rankPct>0.5)return 0;
+        return clamp01((1/3 - a.rankPct)/(1/3)); } }
+  ];
+
+  function engineDayType(ds,isSpecial){ if(isSpecial(ds)) return 'special'; return isSpecial(addDays(ds,-1))?'post':'normal'; }
+
+  // period: {mode:'all'} | {mode:'weeks',weeks:8} | {mode:'range',from:'YYYY-MM-DD',to:'YYYY-MM-DD'}
+  function inPeriod(d, period, lastDate){
+    if(!period||period.mode==='all') return true;
+    if(period.mode==='weeks'){ var cut=addDays(lastDate, -7*period.weeks+1); return d>=cut; }
+    if(period.mode==='range'){ return (!period.from||d>=period.from)&&(!period.to||d<=period.to); }
+    return true;
+  }
+
+  function compute(allData, targetDate, deps, opts){
+    opts=opts||{};
+    var MIN=opts.minSample||8, LIFT_TH=opts.liftTh||1.2, Z_TH=opts.zTh||1.96;
+    var period=opts.period||{mode:'all'};
+
+    var ctx=buildContext(allData,deps);
+    ctx._rb3={};ctx._go3={};ctx._lo3={};ctx._rot={};
+    var lastDate=ctx.dates[ctx.dates.length-1];
+    var targetType=engineDayType(targetDate,ctx.isSpecial);
+
+    // バックテスト対象日：期間内・同タイプ・履歴あり・present>=3
+    var btDays=ctx.dates.filter(function(d,i){
+      if(i===0) return false;
+      if(engineDayType(d,ctx.isSpecial)!==targetType) return false;
+      if(ctx.dayInfo[d].present<3) return false;
+      return inPeriod(d,period,lastDate);
+    });
+
+    function touchRanks(bi){ OMENS.forEach(function(o){ if(o.key==='gap')return; if(ctx.machines.length) o.signal(ctx,ctx.machines[0],bi); }); }
+
+    // 集計：Mantel-Haenszel層別（日ごとに条件付け）
+    // 各日 d：N=稼働台数, hi=高設定台数, n1=予兆あり台数, a=予兆あり かつ 高設定 の台数。
+    //   期待値 E = n1*hi/N（＝予兆台数 × その日の高設定率）… "その日の全体率で正規化"
+    //   分散  V = n1*n0*hi*(N-hi)/(N^2*(N-1))（超幾何分布）
+    // 全日で ΣA, ΣE, ΣV を積み上げ、lift=ΣA/ΣE、z=(ΣA-ΣE)/sqrt(ΣV)。
+    var agg={}; OMENS.forEach(function(o){ agg[o.key]={n:0, A:0, E:0, V:0}; });
+    // ② 深さバケット別プロファイル：各予兆を深さ(grade)で K分割し実測liftを測る
+    var KB=5;
+    var bAgg={}; OMENS.forEach(function(o){ bAgg[o.key]=[]; for(var b=0;b<KB;b++) bAgg[o.key].push({n:0,A:0,E:0}); });
+    function gradeBucket(g){ var b=Math.floor(g*KB); return b<0?0:(b>=KB?KB-1:b); }
+    btDays.forEach(function(d){
+      var bi=ctx.dates.indexOf(d); touchRanks(bi);
+      var rows=ctx.dayInfo[d].rows; var N=rows.length, hi=ctx.dayInfo[d].high;
+      if(N<2) return;
+      OMENS.forEach(function(o){
+        var n1=0, a=0;
+        rows.forEach(function(row){
+          if(o.signal(ctx,parseInt(row['台番号']),bi)){ n1++; if(ctx.isHigh(row)) a++; }
+        });
+        if(n1===0) return;
+        var n0=N-n1;
+        var E=n1*hi/N;
+        var V=n1*n0*hi*(N-hi)/(N*N*(N-1));
+        var g=agg[o.key]; g.n+=n1; g.A+=a; g.E+=E; g.V+=V;
+        // ② 深さバケット別に A（高設定数）・E（全体率＝期待高設定確率）を積む
+        if(o.grade){ var dayRate=hi/N; var bs=bAgg[o.key];
+          rows.forEach(function(row){ var gg=o.grade(ctx,parseInt(row['台番号']),bi);
+            if(gg>0){ var bk=gradeBucket(gg); bs[bk].n++; bs[bk].E+=dayRate; if(ctx.isHigh(row)) bs[bk].A++; } });
+        }
+      });
+    });
+
+    function evalOmen(g){
+      var lift = g.E>0 ? g.A/g.E : (g.A>0?Infinity:0);
+      var z = g.V>0 ? (g.A-g.E)/Math.sqrt(g.V) : 0;
+      var enough = g.n>=MIN;
+      var pass = enough && lift>=LIFT_TH && z>=Z_TH;
+      var shrink = g.n/(g.n+5);
+      var weight = pass ? Math.min((lift-1)*100,60)*shrink : 0;
+      return { lift:lift, z:z, enough:enough, pass:pass, shrink:shrink, weight:weight,
+               obsRate: g.n? g.A/g.n : 0, expRate: g.n? g.E/g.n : 0 };
+    }
+
+    var omenResults=OMENS.map(function(o){
+      var g=agg[o.key]; var e=evalOmen(g);
+      var reason = !e.enough ? 'サンプル不足(n<'+MIN+')' : (e.lift<LIFT_TH?'効果小(lift<'+LIFT_TH+')':(e.z<Z_TH?'有意でない(z<'+Z_TH+')':'採用'));
+      return { key:o.key, label:o.label, n:g.n, obsRate:e.obsRate, expRate:e.expRate,
+               lift:e.lift, z:e.z, pass:e.pass, weight:e.weight, reason:reason };
+    });
+
+    // ② バケットプロファイル：信頼度補正後の「効果の正の部分」を最大バケットで正規化[0,1]。
+    //    平坦（正の効果なし）なら null＝①線形へフォールバック。
+    var bucketProfiles={};
+    OMENS.forEach(function(o){
+      var bs=bAgg[o.key], excess=[], maxEx=0, raw=[];
+      for(var b=0;b<KB;b++){
+        var cell=bs[b];
+        var lift = cell.E>0 ? cell.A/cell.E : 0;
+        var shrink = cell.n/(cell.n+5);
+        var liftAdj = 1 + (lift-1)*shrink;      // 薄いバケットは1(効果なし)へ収縮
+        var ex = liftAdj>1 ? (liftAdj-1) : 0;   // 効果が正の分だけ採用（冷たい深さ帯は0）
+        excess.push(ex); raw.push({n:cell.n, lift:Math.round(lift*100)/100, liftAdj:Math.round(liftAdj*100)/100});
+        if(ex>maxEx) maxEx=ex;
+      }
+      if(maxEx>0){ bucketProfiles[o.key]={prof:excess.map(function(e){return e/maxEx;}), raw:raw, KB:KB}; }
+      else { bucketProfiles[o.key]=null; }   // フォールバック
+    });
+
+    // 対象日スコアリング
+    var targetIdx=ctx.dates.indexOf(targetDate); if(targetIdx<0) targetIdx=ctx.dates.length;
+    touchRanks(targetIdx);
+    var passing=omenResults.filter(function(r){return r.pass;});
+    var ranking=ctx.machines.map(function(m){
+      var score=0,fired=[];
+      passing.forEach(function(r){
+        var o=OMENS.find(function(x){return x.key===r.key;});
+        var gRaw = o.grade ? o.grade(ctx,m,targetIdx) : (o.signal(ctx,m,targetIdx)?1:0);
+        if(gRaw>0){
+          var prof=bucketProfiles[r.key];
+          var gEff = prof ? prof.prof[gradeBucket(gRaw)] : gRaw;   // 実測プロファイル。平坦なら線形
+          if(gEff>0){ var pts=r.weight*gEff; score+=pts;
+            fired.push({key:r.key,label:r.label,pts:Math.round(pts),grade:Math.round(gEff*100)/100}); }
+        }
+      });
+      return { m:m, score:Math.round(score*10)/10, fired:fired };
+    }).sort(function(a,b){return b.score-a.score;});
+
+    return {
+      targetDate:targetDate, targetType:targetType,
+      period:period, btDayCount:btDays.length, btDays:btDays,
+      totalDaysOfType: ctx.dates.filter(function(d,i){return i>0&&engineDayType(d,ctx.isSpecial)===targetType&&ctx.dayInfo[d].present>=3;}).length,
+      omenResults:omenResults, passingCount:passing.length, ranking:ranking, bucketProfiles:bucketProfiles,
+      isEmpty: passing.length===0
+    };
+  }
+
+  return { compute:compute, OMENS:OMENS, engineDayType:engineDayType, _num:num };
+});
+
 function renderTarget() {
   if (!allData.length) return;
-
-  // マトリクス未計算チェック
   const resultEl = document.getElementById('target-result');
-  if (!corrMatrixCache) {
-    resultEl.innerHTML = `
-      <div class="card" style="border-color:rgba(232,255,71,0.3);text-align:center;padding:2rem">
-        <div style="font-size:32px;margin-bottom:12px">📐</div>
-        <div style="font-size:15px;font-weight:700;color:var(--accent);margin-bottom:8px">まず相関強度マトリクスを計算してください</div>
-        <div style="font-size:13px;color:var(--text2);line-height:1.8">
-          「時系列相関分析」ページを開き、<br>
-          1. 「マトリクスを計算」ボタンを押す（相関強度40点）<br>
-          2. 「機種差枚相関を計算」ボタンを押す（機種差枚相関35点）<br>
-          両方押してから戻ってきてください。<br>
-          <span style="font-size:11px;color:var(--text3)">※機種差枚相関は未計算でも0点として計算します</span>
-        </div>
-      </div>`;
+  const dates = [...new Set(allData.map(r => String(r['日付']).substring(0,10)))].sort();
+  const firstDate = dates[0], lastDate = dates[dates.length-1];
+
+  // 対象日 既定：最終日＋1
+  const dateInput = document.getElementById('target-date');
+  if (!dateInput.value) { const d = parseLocalDate(lastDate); d.setDate(d.getDate()+1); dateInput.value = driftFmt(d); }
+  const targetDate = dateInput.value;
+
+  // 分析期間 既定：全期間
+  const fromInput = document.getElementById('target-from');
+  const toInput = document.getElementById('target-to');
+  if (!fromInput.value) fromInput.value = firstDate;
+  if (!toInput.value) toInput.value = lastDate;
+  const period = { mode:'range', from: fromInput.value, to: toInput.value };
+
+  // 対象日タイプのバッジ
+  const ttype = PredictionEngine2.engineDayType(targetDate, isSpecialDay);
+  const typeName = ttype==='special' ? '特定日' : ttype==='post' ? '特定日翌日' : '通常日';
+  const badge = document.getElementById('target-daytype-badge');
+  badge.textContent = typeName;
+  const isSp = ttype==='special';
+  badge.style.background = isSp ? 'rgba(232,255,71,0.15)' : ttype==='post' ? 'rgba(71,200,255,0.12)' : 'rgba(100,100,100,0.15)';
+  badge.style.color = isSp ? 'var(--accent)' : ttype==='post' ? 'var(--accent2)' : 'var(--text2)';
+  badge.style.borderColor = isSp ? 'var(--accent)' : 'var(--border)';
+  document.getElementById('target-sub').textContent =
+    targetDate + '（' + WEEKDAY_NAMES[parseLocalDate(targetDate).getDay()] + '曜・' + typeName + '）の狙い目台を予測エンジンで算出';
+
+  // エンジン実行
+  const R = PredictionEngine2.compute(allData, targetDate, { isHighSetting, isSpecialDay, parseFraction }, { period });
+  const periodLabel = period.from + '〜' + period.to;
+
+  // エンジン空：正直に狙い目を出さない
+  if (R.isEmpty) {
+    resultEl.innerHTML =
+      '<div class="card" style="border-color:rgba(255,179,71,0.35);text-align:center;padding:2rem">' +
+      '<div style="font-size:30px;margin-bottom:10px">🤐</div>' +
+      '<div style="font-size:15px;font-weight:700;color:var(--warning);margin-bottom:8px">この条件では狙い目を出しません</div>' +
+      '<div style="font-size:13px;color:var(--text2);line-height:1.9">' +
+      '対象タイプ「' + typeName + '」・期間 ' + periodLabel + '（バックテスト' + R.btDayCount + '日）では、<br>' +
+      '統計的に有意な予兆が見つかりませんでした。<br>' +
+      '<span style="color:var(--text3);font-size:12px">根拠が薄いまま無理に狙い目を出すと外す確率が上がるため、あえて空にしています。期間を広げるか、データの蓄積をお待ちください。</span>' +
+      '</div></div>';
     return;
   }
 
-  // 基本情報
-  const dates = [...new Set(allData.map(r => String(r['日付']).substring(0,10)))].sort();
-  const lastDate = dates[dates.length - 1];
-  const dateInput = document.getElementById('target-date');
-  if (!dateInput.value) {
-    const d = parseLocalDate(lastDate); d.setDate(d.getDate()+1);
-    dateInput.value = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  const scored = R.ranking.filter(x => x.score > 0);
+  const topN = scored.slice(0, 10);
+  let html =
+    '<div class="card" style="margin-bottom:12px;font-size:12px;color:var(--text2);line-height:1.7">' +
+    '📅 期間 <b style="color:var(--text)">' + periodLabel + '</b>（同タイプ ' + R.btDayCount + '日でバックテスト）｜' +
+    '採用予兆 <b style="color:var(--accent)">' + R.passingCount + '</b> 個｜対象:' + typeName +
+    '</div>';
+
+  if (!scored.length) {
+    html += '<div class="card" style="font-size:12px;color:var(--text2)">採用予兆はありましたが、対象日にはどの台も予兆が点灯しませんでした。</div>';
+    resultEl.innerHTML = html; return;
   }
-  const targetDate = dateInput.value;
-  const isSpecial = isSpecialDay(targetDate);
-  const dayTypeName = isSpecial ? '特定日' : '通常日';
-  const badge = document.getElementById('target-daytype-badge');
-  badge.textContent = dayTypeName;
-  badge.style.background = isSpecial ? 'rgba(232,255,71,0.15)' : 'rgba(100,100,100,0.15)';
-  badge.style.color = isSpecial ? 'var(--accent)' : 'var(--text2)';
-  badge.style.borderColor = isSpecial ? 'var(--accent)' : 'var(--border)';
-  document.getElementById('target-sub').textContent =
-    targetDate+'（'+WEEKDAY_NAMES[parseLocalDate(targetDate).getDay()]+'曜・'+dayTypeName+'）の狙い目台';
 
-  const filteredData = allData.filter(r => {
-    const ds = String(r['日付']).substring(0,10);
-    return isSpecial ? isSpecialDay(ds) : !isSpecialDay(ds);
+  html += '<div style="display:flex;flex-direction:column;gap:8px">';
+  topN.forEach((x, i) => {
+    const rank = i + 1;
+    const rankColor = rank <= 3 ? 'var(--accent)' : 'var(--text2)';
+    const chips = x.fired.map(f =>
+      '<span style="font-size:10px;background:var(--surface3);color:var(--text2);border:1px solid var(--border);border-radius:20px;padding:2px 8px;white-space:nowrap">' + f.label + ' +' + f.pts + '</span>'
+    ).join(' ');
+    html +=
+      '<div class="card" style="display:flex;align-items:center;gap:14px;padding:12px 14px">' +
+      '<div style="font-size:20px;font-weight:800;color:' + rankColor + ';min-width:34px;text-align:center">' + rank + '</div>' +
+      '<div style="min-width:72px"><div style="font-size:17px;font-weight:800">台' + x.m + '</div>' +
+      '<div style="font-size:11px;color:var(--accent)">スコア ' + x.score + '</div></div>' +
+      '<div style="display:flex;flex-wrap:wrap;gap:5px;flex:1">' + chips + '</div>' +
+      '</div>';
   });
-  const allMachines = [...new Set(allData.map(r => parseInt(r['台番号'])))].sort((a,b)=>a-b);
-  const ZONES = getZones();
-  const CORNER_MACHINES = getCornerMachines();
-  const targetWd = parseLocalDate(targetDate).getDay();
-
-  // 台・日付マップ
-  const machineDayMap = {};
-  allData.forEach(r => {
-    const m = String(r['台番号']), d = String(r['日付']).substring(0,10);
-    if (!machineDayMap[m]) machineDayMap[m] = {};
-    machineDayMap[m][d] = r;
-  });
-
-  const top3 = corrMatrixCache.top3;
-  const calcType = corrMatrixCache.calcType;
-
-  const scores = allMachines.map(m => {
-    let score = 0;
-    const detail = {};
-
-    // ── A. 相関強度スコア（40点）──
-    // マトリクスTOP3の項目・日数を使って各台をスコアリング
-    let corrScore = 0;
-    const corrDetails = [];
-    top3.forEach((c, ci) => {
-      const weight = ci===0 ? 18 : ci===1 ? 14 : 8; // 1位18点・2位14点・3位8点＝合計40点
-      const idx = dates.indexOf(targetDate) >= 0 ? dates.indexOf(targetDate) : dates.length;
-
-      let vals = [];
-      if (calcType === 'single') {
-        // 単日：n日前
-        if (idx-c.n >= 0) {
-          const prevRow = machineDayMap[String(m)]?.[dates[idx-c.n]];
-          if (prevRow && (parseFloat(prevRow['総回転数'])||0) >= 100) {
-            const v = (['合成確率','BB確率','RB確率'].includes(c.item))
-              ? parseFraction(prevRow[c.item]) : parseFloat(prevRow[c.item]);
-            if (v!=null && !isNaN(v)) vals = [v];
-          }
-        }
-      } else {
-        // 累計：前1〜n日の合計
-        let sum = 0, cnt = 0;
-        for (let k=1; k<=c.n; k++) {
-          if (idx-k < 0) break;
-          const kr = machineDayMap[String(m)]?.[dates[idx-k]];
-          if (!kr||(parseFloat(kr['総回転数'])||0)<100) continue;
-          const v = (['合成確率','BB確率','RB確率'].includes(c.item))
-            ? parseFraction(kr[c.item]) : parseFloat(kr[c.item]);
-          if (v!=null&&!isNaN(v)) { sum+=v; cnt++; }
-        }
-        if (cnt>0) vals = [sum];
-      }
-
-      if (!vals.length) {
-        corrDetails.push(c.item+c.n+'日前：データなし');
-        return;
-      }
-      const val = vals[0];
-
-      // 機種内順位で評価（direction='low'なら低い台が高設定になりやすい）
-      const sameDay = allMachines.map(om => {
-        if (calcType === 'single') {
-          if (idx-c.n < 0) return null;
-          const or = machineDayMap[String(om)]?.[dates[idx-c.n]];
-          if (!or||(parseFloat(or['総回転数'])||0)<100) return null;
-          return (['合成確率','BB確率','RB確率'].includes(c.item))
-            ? parseFraction(or[c.item]) : parseFloat(or[c.item]);
-        } else {
-          let sum=0, cnt2=0;
-          for (let k=1; k<=c.n; k++) {
-            if (idx-k<0) break;
-            const kr = machineDayMap[String(om)]?.[dates[idx-k]];
-            if (!kr||(parseFloat(kr['総回転数'])||0)<100) continue;
-            const v = (['合成確率','BB確率','RB確率'].includes(c.item))
-              ? parseFraction(kr[c.item]) : parseFloat(kr[c.item]);
-            if (v!=null&&!isNaN(v)) { sum+=v; cnt2++; }
-          }
-          return cnt2>0 ? sum : null;
-        }
-      }).filter(v => v!=null&&!isNaN(v));
-
-      if (!sameDay.length) { corrDetails.push(c.item+c.n+'日前：順位計算不可'); return; }
-
-      const sorted = [...sameDay].sort((a,b)=>a-b);
-      const rank = sorted.indexOf(val)+1;
-      const pct = rank/sameDay.length*100; // 低い方が1%ile
-
-      // direction='low'なら低い%ileほど高スコア、'high'なら高い%ileほど高スコア
-      const scoreRatio = c.direction==='low'
-        ? (100 - pct) / 100  // 低い台（ワースト）が高スコア
-        : pct / 100;          // 高い台（ベスト）が高スコア
-      const pts = Math.round(weight * scoreRatio);
-      corrScore += pts;
-      corrDetails.push(c.item+'('+c.n+'日前)：'+pct.toFixed(0)+'%ile → '+pts+'点');
-    });
-    detail.corr = corrDetails.join(' / ');
-    score += corrScore;
-
-    // ── B. 複合高設定率スコア（20点）──
-    // 優先度：①曜日×ゾーン×末尾 → ②曜日×末尾 → ③ゾーン×末尾 → ④末尾単体
-    const zone = ZONES.find(z => z.machines.includes(m));
-    const suffix = m % 10;
-
-    // ①3条件複合
-    const triRows = filteredData.filter(r => {
-      const rWd = getWeekday(String(r['日付']).substring(0,10));
-      const rM = parseInt(r['台番号']);
-      return rWd===targetWd && zone && zone.machines.includes(rM) && rM%10===suffix;
-    });
-    // ②曜日×末尾
-    const wdSufRows = filteredData.filter(r => {
-      const rWd = getWeekday(String(r['日付']).substring(0,10));
-      return rWd===targetWd && parseInt(r['台番号'])%10===suffix;
-    });
-    // ③ゾーン×末尾
-    const zoneSufRows = filteredData.filter(r => {
-      const rM = parseInt(r['台番号']);
-      return zone && zone.machines.includes(rM) && rM%10===suffix;
-    });
-    // ④末尾単体
-    const sufRows = filteredData.filter(r => parseInt(r['台番号'])%10===suffix);
-
-    let compScore = 0, compLabel = '';
-    const calcRate = rows => rows.length>0 ? rows.filter(r=>isHighSetting(r)).length/rows.length : null;
-    const rateToScore = (rate, max) => {
-      if (rate===null) return 0;
-      return rate>=0.4 ? max : rate>=0.25 ? Math.round(max*0.7) : rate>=0.1 ? Math.round(max*0.35) : 0;
-    };
-
-    if (triRows.length >= 3) {
-      const rate = calcRate(triRows);
-      compScore = rateToScore(rate, 25);
-      compLabel = WEEKDAY_NAMES[targetWd]+'曜×'+(zone?zone.label:'?')+'×末尾'+suffix+' '+(rate*100).toFixed(0)+'%（'+triRows.filter(r=>isHighSetting(r)).length+'/'+triRows.length+'）→ '+compScore+'点';
-    } else if (wdSufRows.length >= 3) {
-      const rate = calcRate(wdSufRows);
-      compScore = rateToScore(rate, 20); // フォールバックは最大20点
-      compLabel = WEEKDAY_NAMES[targetWd]+'曜×末尾'+suffix+' '+(rate*100).toFixed(0)+'%（'+wdSufRows.filter(r=>isHighSetting(r)).length+'/'+wdSufRows.length+'）[ゾーン除外] → '+compScore+'点';
-    } else if (zoneSufRows.length >= 3) {
-      const rate = calcRate(zoneSufRows);
-      compScore = rateToScore(rate, 15);
-      compLabel = (zone?zone.label:'?')+'×末尾'+suffix+' '+(rate*100).toFixed(0)+'%（'+zoneSufRows.filter(r=>isHighSetting(r)).length+'/'+zoneSufRows.length+'）[曜日除外] → '+compScore+'点';
-    } else if (sufRows.length >= 3) {
-      const rate = calcRate(sufRows);
-      compScore = rateToScore(rate, 10);
-      compLabel = '末尾'+suffix+' '+(rate*100).toFixed(0)+'%（'+sufRows.filter(r=>isHighSetting(r)).length+'/'+sufRows.length+'）[末尾のみ] → '+compScore+'点';
-    } else {
-      compLabel = 'データ不足 → 0点';
-    }
-    detail.comp = compLabel;
-    score += compScore;
-
-    // ── C. 機種差枚相関スコア（35点）──
-    // 機種差枚相関キャッシュがあれば使用、なければ0点
-    let mdCorrScore = 0, mdCorrLabel = 'キャッシュなし → 0点';
-    if (window.machineDiffCorrCache) {
-      const cache = window.machineDiffCorrCache;
-      // 最も相関が強い日数（ランキング1位）の値を使用
-      const best = cache.ranked[0];
-      if (best) {
-        const n = best.n;
-        const calcType = cache.calcType;
-        // その台の前N日の機種差枚を取得
-        const targetIdx = dates.indexOf(targetDate) >= 0 ? dates.indexOf(targetDate) : dates.length;
-        let machineStatVal = null;
-        if (calcType === 'single') {
-          if (targetIdx - n >= 0) {
-            const ps = window._dayMachineStatCache?.[dates[targetIdx-n]];
-            if (ps && ps.totalCount >= 3) machineStatVal = ps.avgDiff;
-          }
-        } else {
-          let sum=0, cnt=0;
-          for (let k=1; k<=n; k++) {
-            if (targetIdx-k<0) break;
-            const ps = window._dayMachineStatCache?.[dates[targetIdx-k]];
-            if (ps && ps.totalCount>=3) { sum+=ps.avgDiff; cnt++; }
-          }
-          if (cnt>0) machineStatVal = sum;
-        }
-
-        if (machineStatVal !== null) {
-          // Zスコアで確信度を計算：キャッシュのzDiff（標準化済み相関強度）を使用
-          const isLowBetter = (best.diffAD != null ? best.diffAD < 0 : best.diffDS < 0);
-          // ranked[0]のzDiffPct（0〜100スケールのZスコア差）を確信度として使用
-          const zConfidence = Math.min((best.zDiffPct || 0) / 100, 1);
-          mdCorrScore = Math.round(35 * zConfidence);
-          const dirStr = isLowBetter ? '機種低調後' : '機種好調後';
-          const nLabel = calcType==='single' ? n+'日前' : '前'+n+'日累計';
-          mdCorrLabel = dirStr+'（'+nLabel+'）Zスコア差'+( best.zDiffPct||0).toFixed(1)+' → '+mdCorrScore+'点';
-        } else {
-          mdCorrLabel = 'データなし → 0点';
-        }
-      }
-    }
-    detail.mdCorr = mdCorrLabel;
-    score += mdCorrScore;
-
-    const isCorner = CORNER_MACHINES.includes(m);
-    return { m, score, detail, isCorner };
-  });
-
-  scores.sort((a,b) => b.score-a.score);
-  const top = scores.slice(0, 10);
-  if (!top.length) { resultEl.innerHTML = '<div class="card">データが不足しています</div>'; return; }
-
-  // マトリクス情報表示
-  const modeLabel = corrMatrixCache.mode==='abs'?'Zスコア差':corrMatrixCache.mode==='rank'?'%ile差':'最大値';
-  const dayTypeLabel2 = corrMatrixCache.dayType==='special'?'特定日':corrMatrixCache.dayType==='normal'?'通常日':'全体';
-  const typeLabel = corrMatrixCache.calcType==='single'?'単日':'累計';
-  const top3Label = top3.map((c,i) => '#'+(i+1)+' '+c.item+'('+c.n+'日前) 差'+c.diff+'%').join('　');
-
-  let html = '<div class="card" style="border-color:rgba(71,200,255,0.3);margin-bottom:1rem">'+
-    '<div class="card-title" style="color:var(--accent2)">使用中のマトリクスTOP3（'+modeLabel+'・'+typeLabel+'・'+dayTypeLabel2+'）</div>'+
-    '<div style="font-size:12px;color:var(--text2)">'+top3Label+'</div>'+
-    '</div>';
-
-  html += '<div class="card"><div class="card-title">TOP 10 狙い目台</div>';
-
-  top.forEach((item, rank) => {
-    const barColor = rank===0?'var(--accent)':rank<=2?'var(--accent2)':rank<=4?'var(--accent3)':'var(--text3)';
-    const zone = ZONES.find(z => z.machines.includes(item.m));
-    const corrPts = Math.min(top3.reduce((s,c,ci)=>{
-      const w=ci===0?22:ci===1?18:10; return s+w;
-    },0), 50);
-    html += '<div style="margin-bottom:1rem;padding:12px;background:var(--surface2);border-radius:var(--radius);border:1px solid '+(rank===0?'var(--accent)':'var(--border)')+'">'+
-      '<div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">'+
-        '<div style="font-size:18px;font-weight:700;color:'+barColor+';width:28px;text-align:right">#'+(rank+1)+'</div>'+
-        '<div style="font-family:monospace;font-size:22px;font-weight:700;color:var(--text)">'+item.m+'番台</div>'+
-        (item.isCorner?'<span style="font-size:11px;background:rgba(255,107,71,0.2);color:var(--accent3);padding:2px 6px;border-radius:4px">角台</span>':'')+
-        (zone?'<span style="font-size:11px;color:var(--text2)">'+zone.label+'</span>':'')+
-        '<div style="margin-left:auto;font-family:monospace,monospace;font-size:20px;font-weight:700;color:'+barColor+'">'+item.score+'<span style="font-size:11px;color:var(--text2)">/100点</span></div>'+
-      '</div>'+
-      '<div style="background:var(--surface);border-radius:4px;height:6px;margin-bottom:8px">'+
-        '<div style="background:'+barColor+';height:6px;border-radius:4px;width:'+Math.min(item.score,100)+'%;transition:width 0.5s"></div>'+
-      '</div>'+
-      '<div style="display:grid;grid-template-columns:1fr;gap:4px">'+
-        '<div style="font-size:11px;color:var(--text2)">🔗 相関強度：'+item.detail.corr+'</div>'+
-        '<div style="font-size:11px;color:var(--text2)">📊 複合高設定率：'+item.detail.comp+'</div>'+
-      '</div>'+
-    '</div>';
-  });
-
-  html += '</div><div class="card" style="font-size:11px;color:var(--text2);line-height:2">'+
-    '<div class="card-title">スコア配点</div>'+
-    '相関強度（マトリクス1位のみ）：40点　／　機種差枚相関：35点　／　複合高設定率（曜日×ゾーン×末尾）：25点<br>'+
-    '※「'+dayTypeName+'」のデータで計算　※マトリクス＋機種差枚相関の計算結果を使用（'+modeLabel+'・'+typeLabel+'）<br>'+
-    '<span style="color:var(--accent2)">※機種差枚相関は「時系列相関分析」ページで「機種差枚相関を計算」ボタンを押すと反映されます</span>'+
-    '</div>';
-
+  html += '</div>';
   resultEl.innerHTML = html;
 }
 
