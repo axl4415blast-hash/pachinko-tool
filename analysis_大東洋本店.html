@@ -122,6 +122,7 @@ body { background: var(--bg); color: var(--text); font-family: 'Noto Sans JP', s
     <button class="nav-item" onclick="showPage('suffix',this)"><div class="nav-dot"></div>末尾番号傾向</button>
     <button class="nav-item" onclick="showPage('daytype',this)"><div class="nav-dot"></div>特定日・曜日分析</button>
     <button class="nav-item" onclick="showPage('zone',this)"><div class="nav-dot"></div>島・ゾーン分析</button>
+    <button class="nav-item" onclick="showPage('spec',this)"><div class="nav-dot"></div>🎯 解析値マッチ</button>
     <button class="nav-item" onclick="showPage('heatmap',this)"><div class="nav-dot"></div>曜日×台番号ヒートマップ</button>
     <button class="nav-item" onclick="showPage('machinetrend',this)"><div class="nav-dot"></div>📊 機種差枚分析</button>
     <button class="nav-item" onclick="showPage('settings',this)"><div class="nav-dot"></div>高設定基準設定</button>
@@ -223,6 +224,44 @@ body { background: var(--bg); color: var(--text); font-family: 'Noto Sans JP', s
       <div class="card-title">台別 高設定ヒートマップ</div>
       <div id="zone-heatmap"></div>
     </div>
+  </div>
+    <div class="page" id="page-spec">
+    <div class="page-header">
+      <div class="page-title">🎯 解析値<span>マッチ</span></div>
+      <div class="page-sub">同タイプのバックテスト日を横断して台ごとにプール集計し、機種の理論解析値（合成・RB）に最も近い／超えている台を挙げます。記述的な指標です。</div>
+    </div>
+    <div class="card">
+      <div class="card-title"><span id="spec-sheet-name">（機種未選択）</span> の理論解析値</div>
+      <div style="font-size:11px;color:var(--text2);margin-bottom:10px;line-height:1.7">狙いの“的”になる高設定の解析値（設定6相当など）を、分母（1/◯の◯）で入力してください。</div>
+      <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end">
+        <div id="spec-gosei-wrap">
+          <div class="setting-label" style="margin-bottom:4px">合成確率　1/</div>
+          <input type="number" class="setting-input" id="spec-gosei" style="width:100px" placeholder="127" />
+        </div>
+        <div>
+          <div class="setting-label" style="margin-bottom:4px">RB確率　1/</div>
+          <input type="number" class="setting-input" id="spec-rb" style="width:100px" placeholder="280" />
+        </div>
+        <button class="load-btn" style="width:auto;padding:8px 20px" onclick="saveSpec()">解析値を保存</button>
+        <div id="spec-save-status" style="font-size:12px;color:var(--success)"></div>
+      </div>
+      <div id="spec-at-note" style="font-size:11px;color:var(--accent2);margin-top:8px;display:none">※ この機種はAT機のため、RB確率のみで判定します（合成は使いません）。</div>
+    </div>
+    <div class="card" style="display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap">
+      <div>
+        <div class="setting-label" style="margin-bottom:4px">対象日</div>
+        <input type="date" class="setting-input" id="spec-date" style="width:150px" />
+      </div>
+      <div style="display:flex;align-items:flex-end;gap:6px">
+        <div><div class="setting-label" style="margin-bottom:4px">分析期間（開始）</div><input type="date" class="setting-input" id="spec-from" style="width:140px" /></div>
+        <span style="color:var(--text2);padding-bottom:8px">〜</span>
+        <div><div class="setting-label" style="margin-bottom:4px">終了</div><input type="date" class="setting-input" id="spec-to" style="width:140px" /></div>
+      </div>
+      <button class="load-btn" style="width:auto;padding:8px 20px" onclick="renderSpec()">解析値マッチを計算</button>
+      <div id="spec-daytype-badge" style="font-size:12px;padding:6px 10px;border-radius:4px;border:1px solid var(--border)"></div>
+    </div>
+    <div style="font-size:11px;color:var(--text2);margin:-8px 0 12px;line-height:1.6">※ 対象日と同じタイプ（特定日／通常日／翌日）の過去日だけを、対象日より前の範囲で集計します。</div>
+    <div id="spec-result"></div>
   </div>
 
   <!-- Heatmap（曜日×台番号ヒートマップ）-->
@@ -341,6 +380,10 @@ let gasUrl = '';
 // 機種別基準をオブジェクトで管理 { "マイジャグラーV": {rotation,gosei,rb}, ... }
 let allCriteria = JSON.parse(localStorage.getItem(CRITERIA_KEY) || '{}');
 let criteria = { rotation: 5000, gosei: 125, rb: 280 }; // 現在のシートの基準
+// 解析値マッチ用：機種別の理論解析値 { "マイジャグラーV": {gosei:127, rb:280}, ... }（分母）
+const SPEC_KEY = 'high_spec_v1';
+let allSpecs = JSON.parse(localStorage.getItem(SPEC_KEY) || '{}');
+function getSpecForSheet(name){ const s = allSpecs[name]; return s ? {gosei:s.gosei||null, rb:s.rb||null} : null; }
 
 function getCriteriaForSheet(name) {
   return allCriteria[name] || { rotation: 5000, gosei: 125, rb: 280 };
@@ -569,6 +612,7 @@ function renderPage(id) {
   else if (id==='suffix') renderSuffix();
   else if (id==='daytype') renderDaytype();
   else if (id==='zone') renderZone();
+  else if (id==='spec') renderSpec();
   else if (id==='heatmap') renderHeatmap();
 }
 
@@ -1078,6 +1122,190 @@ function renderTarget() {
   resultEl.innerHTML = html;
 }
 
+// ── 解析値マッチ 計算コア（specmatch_core.js とバイト一致） ──
+/* =========================================================================
+   解析値マッチ 計算コア（新分析）
+   - 同タイプのバックテスト日を横断し、台ごとにプール集計した平均が
+     機種の理論解析値（合成・RB）にどれだけ近い/超えているかで台を並べる。
+   - 記述的・forward-only（対象日より前の同タイプ日だけを使う）。
+   - deps: { isSpecialDay }
+   - opts: { spec:{gosei,rb}(1/N の N), isAt, period:{from,to}, wRb, wGosei,
+             minPoolRot, minDaySpins, dayFrac, shrinkK }
+   ========================================================================= */
+(function (root, factory) {
+  if (typeof module !== 'undefined' && module.exports) module.exports = factory();
+  else root.SpecMatch = factory();
+})(typeof self !== 'undefined' ? self : this, function () {
+
+  function num(v){ if(v==null) return 0; var n=parseFloat(String(v).replace(/,/g,'')); return isNaN(n)?0:n; }
+  function pDate(ds){ var p=String(ds).substring(0,10).split('-'); return new Date(+p[0],+p[1]-1,+p[2]); }
+  function fmt(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+  function addDays(ds,n){ var d=pDate(ds); d.setDate(d.getDate()+n); return fmt(d); }
+
+  function dayType(ds, isSpecial){
+    if(isSpecial(ds)) return 'special';
+    return isSpecial(addDays(ds,-1)) ? 'post' : 'normal';
+  }
+  function inPeriod(d, period){
+    if(!period) return true;
+    return (!period.from || d>=period.from) && (!period.to || d<=period.to);
+  }
+
+  function compute(allData, targetDate, deps, opts){
+    opts = opts || {};
+    var spec   = opts.spec || {};                 // {gosei, rb}（1/N の N＝分母）
+    var isAt   = !!opts.isAt;
+    var wRb    = opts.wRb!=null ? opts.wRb : 0.6;
+    var wGosei = opts.wGosei!=null ? opts.wGosei : 0.4;
+    var minPoolRot  = opts.minPoolRot!=null ? opts.minPoolRot : 3000;   // プール総回転数の下限
+    var minDaySpins = opts.minDaySpins!=null ? opts.minDaySpins : 500;  // 1日を集計に含める最低回転
+    var dayFrac     = opts.dayFrac!=null ? opts.dayFrac : 0.5;          // 同タイプ日の何割以上に出現必須
+    var shrinkK     = opts.shrinkK!=null ? opts.shrinkK : 3;
+
+    var isSpecial = deps.isSpecialDay;
+    var targetType = dayType(targetDate, isSpecial);
+
+    var dates = Array.from(new Set(allData.map(function(r){return String(r['日付']).substring(0,10);}))).sort();
+    // forward-only：対象日より前・同タイプ・期間内
+    var sameTypeDays = dates.filter(function(d){
+      return d < targetDate && dayType(d,isSpecial)===targetType && inPeriod(d, opts.period);
+    });
+    var machines = Array.from(new Set(allData.map(function(r){return parseInt(r['台番号']);}))).sort(function(a,b){return a-b;});
+    // 台×日 → row
+    var map={};
+    allData.forEach(function(r){ var m=parseInt(r['台番号']), d=String(r['日付']).substring(0,10);
+      (map[m]=map[m]||{})[d]=r; });
+
+    var dayGate = Math.max(2, Math.ceil(sameTypeDays.length*dayFrac));
+
+    var ranking=[], insufficient=[];
+    machines.forEach(function(m){
+      var sumRot=0,sumBB=0,sumRB=0,pd=0;
+      sameTypeDays.forEach(function(d){
+        var r=map[m]&&map[m][d]; if(!r) return;
+        var rot=num(r['総回転数']); if(rot<minDaySpins) return;
+        sumRot+=rot; sumBB+=num(r['BB']); sumRB+=num(r['RB']); pd++;
+      });
+      var rec={ m:m, pd:pd, sumRot:sumRot };
+      if(pd < dayGate || sumRot < minPoolRot){ rec.reason = pd<dayGate?('出現'+pd+'日<'+dayGate+'日'):('総回転'+sumRot+'<'+minPoolRot); insufficient.push(rec); return; }
+      var pooledRBd    = sumRB>0 ? sumRot/sumRB : Infinity;              // RB確率の分母（1/N の N）
+      var pooledGoseid = (sumBB+sumRB)>0 ? sumRot/(sumBB+sumRB) : Infinity;
+      var ratioRB    = spec.rb    ? spec.rb   / pooledRBd    : 0;        // >1=解析値超え
+      var ratioGosei = spec.gosei ? spec.gosei/ pooledGoseid : 0;
+      var combined = isAt ? ratioRB : (wRb*ratioRB + wGosei*ratioGosei);
+      var adj = 1 + (combined-1) * pd/(pd+shrinkK);                      // 少日数は解析値ライン(1)へ収縮
+      rec.pooledRBd=Math.round(pooledRBd*10)/10;
+      rec.pooledGoseid=Math.round(pooledGoseid*10)/10;
+      rec.ratioRB=Math.round(ratioRB*1000)/1000;
+      rec.ratioGosei=Math.round(ratioGosei*1000)/1000;
+      rec.combined=Math.round(combined*1000)/1000;
+      rec.adj=Math.round(adj*1000)/1000;
+      rec.meetsRB    = spec.rb    ? pooledRBd    <= spec.rb    : false;
+      rec.meetsGosei = spec.gosei ? pooledGoseid <= spec.gosei : false;
+      ranking.push(rec);
+    });
+    ranking.sort(function(a,b){return b.adj-a.adj;});
+
+    return { targetDate:targetDate, targetType:targetType, spec:spec, isAt:isAt,
+             sameTypeDays:sameTypeDays, sameTypeDayCount:sameTypeDays.length,
+             dayGate:dayGate, ranking:ranking, insufficient:insufficient };
+  }
+
+  return { compute:compute, _num:num, _dayType:dayType };
+});
+
+// ── 解析値マッチ（新分析）UI・描画 ──────────────────────
+function loadSpecInputs(){
+  var nameEl=document.getElementById('spec-sheet-name'); if(nameEl) nameEl.textContent = sheetName || '（機種未選択）';
+  var s = getSpecForSheet(sheetName);
+  if(s){ if(s.gosei) document.getElementById('spec-gosei').value=s.gosei; if(s.rb) document.getElementById('spec-rb').value=s.rb; }
+  var at = isAtMachine();
+  document.getElementById('spec-gosei-wrap').style.display = at ? 'none' : '';
+  document.getElementById('spec-at-note').style.display = at ? '' : 'none';
+}
+function saveSpec(){
+  if(!sheetName){ var st0=document.getElementById('spec-save-status'); st0.style.color='var(--warning)'; st0.textContent='先に機種を選択してください'; return; }
+  var gosei = parseFloat(document.getElementById('spec-gosei').value)||null;
+  var rb = parseFloat(document.getElementById('spec-rb').value)||null;
+  allSpecs[sheetName] = { gosei:gosei, rb:rb };
+  localStorage.setItem(SPEC_KEY, JSON.stringify(allSpecs));
+  var st=document.getElementById('spec-save-status'); st.style.color='var(--success)'; st.textContent='保存しました';
+  setTimeout(function(){ st.textContent=''; }, 2000);
+  renderSpec();
+}
+function specDenomFmt(x){ return isFinite(x) ? ('1/'+x) : '—'; }
+function renderSpec(){
+  if(!allData.length) return;
+  loadSpecInputs();
+  var resultEl=document.getElementById('spec-result');
+  var dates=[...new Set(allData.map(function(r){return String(r['日付']).substring(0,10);}))].sort();
+  var firstDate=dates[0], lastDate=dates[dates.length-1];
+  var dateInput=document.getElementById('spec-date');
+  if(!dateInput.value){ var d=parseLocalDate(lastDate); d.setDate(d.getDate()+1); dateInput.value=driftFmt(d); }
+  var targetDate=dateInput.value;
+  var fromInput=document.getElementById('spec-from'), toInput=document.getElementById('spec-to');
+  if(!fromInput.value) fromInput.value=firstDate;
+  if(!toInput.value) toInput.value=lastDate;
+  var period={ from:fromInput.value, to:toInput.value };
+
+  var ttype = SpecMatch._dayType(targetDate, isSpecialDay);
+  var typeName = ttype==='special'?'特定日':ttype==='post'?'特定日翌日':'通常日';
+  var badge=document.getElementById('spec-daytype-badge'); badge.textContent=typeName;
+  var isSp=ttype==='special';
+  badge.style.background=isSp?'rgba(232,255,71,0.15)':ttype==='post'?'rgba(71,200,255,0.12)':'rgba(100,100,100,0.15)';
+  badge.style.color=isSp?'var(--accent)':ttype==='post'?'var(--accent2)':'var(--text2)';
+  badge.style.borderColor=isSp?'var(--accent)':'var(--border)';
+
+  var at=isAtMachine();
+  var spec=getSpecForSheet(sheetName);
+  if(!spec || !spec.rb || (!at && !spec.gosei)){
+    resultEl.innerHTML='<div class="card" style="border-color:rgba(255,179,71,0.35);padding:1.5rem;font-size:13px;color:var(--text2);line-height:1.9">まず上のカードで理論解析値を入力してください。RB確率は必須'+(at?'':'、合成確率も必要')+'です。</div>';
+    return;
+  }
+  var R=SpecMatch.compute(allData, targetDate, {isSpecialDay:isSpecialDay}, {spec:spec, isAt:at, period:period, wRb:0.6, wGosei:0.4});
+  var specLabel = at ? ('RB 1/'+spec.rb) : ('合成 1/'+spec.gosei+'・RB 1/'+spec.rb);
+
+  var head='<div class="card" style="margin-bottom:12px;font-size:12px;color:var(--text2);line-height:1.7">'+
+    '📅 対象 <b style="color:var(--text)">'+targetDate+'</b>（'+typeName+'）｜同タイプ日 <b style="color:var(--accent)">'+R.sameTypeDayCount+'</b>日でプール集計｜的：<b style="color:var(--text)">'+specLabel+'</b>｜出現必須 '+R.dayGate+'日'+
+    '</div>';
+
+  if(R.sameTypeDayCount<2){
+    resultEl.innerHTML=head+'<div class="card" style="font-size:13px;color:var(--text2)">同タイプの過去日が'+R.sameTypeDayCount+'日しかなく、平均が信用できません。期間を広げるかデータの蓄積をお待ちください。</div>';
+    return;
+  }
+  if(!R.ranking.length){
+    resultEl.innerHTML=head+'<div class="card" style="font-size:13px;color:var(--text2)">出現'+R.dayGate+'日以上かつ十分な回転数で稼働した台がありませんでした。足切り条件を満たす台がないため、無理に出していません。</div>';
+    return;
+  }
+
+  var TOPN=3;
+  var rows=R.ranking.map(function(x,i){
+    var reach=Math.round(x.combined*100);
+    var meets = at ? x.meetsRB : (x.meetsRB && x.meetsGosei);
+    var isTop=i<TOPN;
+    var rankColor=isTop?'var(--accent)':'var(--text2)';
+    var borderC = meets ? 'rgba(232,255,71,0.45)' : 'var(--border)';
+    var rbChip='<span style="color:'+(x.meetsRB?'var(--success)':'var(--text3)')+'">RB '+specDenomFmt(x.pooledRBd)+(x.meetsRB?' ✓':' ✗')+'</span>';
+    var goseiChip= at ? '' : '　<span style="color:'+(x.meetsGosei?'var(--success)':'var(--text3)')+'">合成 '+specDenomFmt(x.pooledGoseid)+(x.meetsGosei?' ✓':' ✗')+'</span>';
+    return '<div class="card" style="display:flex;align-items:center;gap:14px;padding:11px 14px;border-color:'+borderC+'">'+
+      '<div style="font-size:19px;font-weight:800;color:'+rankColor+';min-width:30px;text-align:center">'+(i+1)+'</div>'+
+      '<div style="min-width:64px"><div style="font-size:16px;font-weight:800">台'+x.m+'</div>'+
+      '<div style="font-size:11px;color:var(--accent)">到達度 '+reach+'%</div></div>'+
+      '<div style="flex:1;font-size:12px;line-height:1.6">'+rbChip+goseiChip+
+      '<div style="font-size:10px;color:var(--text3);margin-top:2px">出現'+x.pd+'日／総回転'+x.sumRot.toLocaleString()+(meets?'　★解析値到達':'')+'</div></div>'+
+      '</div>';
+  }).join('');
+
+  var insuf='';
+  if(R.insufficient.length){
+    insuf='<div class="card" style="margin-top:10px;font-size:11px;color:var(--text3);line-height:1.7">データ不足で除外：'+
+      R.insufficient.map(function(x){return '台'+x.m+'('+x.reason+')';}).join('、')+'</div>';
+  }
+  var note='<div style="font-size:11px;color:var(--text2);margin-top:12px;line-height:1.7">'+
+    '※ これは「同タイプ日に解析値へどれだけ届いていたか」の記述です。到達度100%＝解析値ちょうど、超えるほど高設定挙動が濃い台。1日単位の当たり外れではなく複数日をまとめた平均なので、分散に振り回されにくい指標です。断定ではなく傾向として見てください。</div>';
+
+  resultEl.innerHTML=head+'<div style="display:flex;flex-direction:column;gap:8px">'+rows+'</div>'+insuf+note;
+}
 function renderSuffix() {
   const sd={};
   for(let i=0;i<=9;i++) sd[i]={special:{total:0,high:0},normal:{total:0,high:0}};
