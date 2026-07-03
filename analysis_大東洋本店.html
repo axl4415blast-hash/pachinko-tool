@@ -123,6 +123,7 @@ body { background: var(--bg); color: var(--text); font-family: 'Noto Sans JP', s
     <button class="nav-item" onclick="showPage('daytype',this)"><div class="nav-dot"></div>特定日・曜日分析</button>
     <button class="nav-item" onclick="showPage('zone',this)"><div class="nav-dot"></div>島・ゾーン分析</button>
     <button class="nav-item" onclick="showPage('daymap',this)"><div class="nav-dot"></div>📅 日別島図</button>
+    <button class="nav-item" onclick="showPage('rotation',this)"><div class="nav-dot"></div>🔄 ローテーション分析</button>
     <button class="nav-item" onclick="showPage('spec',this)"><div class="nav-dot"></div>🎯 解析値マッチ</button>
     <button class="nav-item" onclick="showPage('audit',this)"><div class="nav-dot"></div>🔬 予兆発見監査</button>
     <button class="nav-item" onclick="showPage('heatmap',this)"><div class="nav-dot"></div>曜日×台番号ヒートマップ</button>
@@ -260,6 +261,36 @@ body { background: var(--bg); color: var(--text); font-family: 'Noto Sans JP', s
 
     <div class="card" id="daymap-result"></div>
   </div>
+
+  <!-- ローテーション分析 -->
+    <div class="page" id="page-rotation">
+    <div class="page-header">
+      <div class="page-title">🔄 ローテーション<span>分析</span></div>
+      <div class="page-sub">前回高設定だった場所に今回も入るか（追従型）／避けるか（回避型）を判定します（基準：特定日 → 次の特定日）</div>
+    </div>
+
+    <!-- サマリー：追従率/回避率 -->
+
+    <div class="card">
+      <div class="card-title">この店のローテーション傾向</div>
+      <div id="rotation-summary"></div>
+    </div>
+
+    <!-- 台番号ベースの遷移追跡 -->
+    <div class="card">
+      <div class="card-title">📍 台番号ベース：高設定だった台の次回追跡</div>
+      <div style="font-size:11px;color:var(--text2);margin-bottom:10px">前回その台に高設定が入っていたとき、次の対象日にどうなったか</div>
+      <div id="rotation-machine-result"></div>
+    </div>
+
+    <!-- 末尾ベースの遷移追跡 -->
+    <div class="card">
+      <div class="card-title">🔢 末尾ベース：高設定だった末尾の次回追跡</div>
+      <div style="font-size:11px;color:var(--text2);margin-bottom:10px">前回その末尾に高設定が入っていたとき、次の対象日にどうなったか</div>
+      <div id="rotation-suffix-result"></div>
+    </div>
+  </div>
+
 
     <div class="page" id="page-spec">
     <div class="page-header">
@@ -767,7 +798,7 @@ function setLoadStatus(msg, type) {
   el.style.color = type==='error'?'var(--error)':type==='success'?'var(--success)':'var(--text2)';
 }
 function renderAllPages() {
-  ['target','overview','suffix','daytype','correlation','interval','zone','heatmap','machinetrend','daymap'].forEach(id => renderPage(id));
+  ['target','overview','suffix','daytype','correlation','interval','zone','heatmap','machinetrend','daymap','rotation'].forEach(id => renderPage(id));
 }
 
 // ── 日別島図 ──────────────────────────────
@@ -868,6 +899,139 @@ function renderDayMapBody(targetDate, ZONES, CORNER_MACHINES) {
   document.getElementById('daymap-result').innerHTML = html;
 }
 
+// ── ローテーション分析 ──────────────────────────────
+function renderRotation() {
+  if (!allData.length) return;
+  renderRotationBody();
+}
+
+function renderRotationBody() {
+  const CORNER_MACHINES = getCornerMachines();
+
+  // 全日付（昇順）
+  const allDates = [...new Set(allData.map(r => String(r['日付']).substring(0,10)))].sort();
+
+  // 特定日 → 次の特定日 だけを対象日として抽出
+  const targetDates = allDates.filter(d => isSpecialDay(d));
+
+  const basisLabel = '特定日';
+
+  if (targetDates.length < 2) {
+    const msg = `<div style="color:var(--text2);font-size:13px;padding:12px">${basisLabel}のデータが2回分以上ないと追跡できません（現在${targetDates.length}回分）。</div>`;
+    document.getElementById('rotation-summary').innerHTML = msg;
+    document.getElementById('rotation-machine-result').innerHTML = '';
+    document.getElementById('rotation-suffix-result').innerHTML = '';
+    return;
+  }
+
+  // 台→日→高設定マップ
+  const machineDay = {};
+  const machines = [...new Set(allData.map(r => parseInt(r['台番号'])))].sort((a,b)=>a-b);
+  allData.forEach(r => {
+    const m = String(r['台番号']), d = String(r['日付']).substring(0,10);
+    if (!machineDay[m]) machineDay[m] = {};
+    machineDay[m][d] = isHighSetting(r);
+  });
+
+  // ── 台番号ベースの遷移 ──
+  const machineTransitions = []; // {m, prevDate, curDate, curHigh}
+  let mFollow = 0, mTotalPrevHigh = 0;
+  for (let i = 1; i < targetDates.length; i++) {
+    const prev = targetDates[i-1], cur = targetDates[i];
+    machines.forEach(m => {
+      const ms = String(m);
+      if (machineDay[ms]?.[prev]) {
+        mTotalPrevHigh++;
+        const curHigh = !!machineDay[ms]?.[cur];
+        if (curHigh) mFollow++;
+        machineTransitions.push({ m, prevDate: prev, curDate: cur, curHigh });
+      }
+    });
+  }
+  const mFollowRate = mTotalPrevHigh > 0 ? (mFollow / mTotalPrevHigh * 100) : null;
+
+  // ── 末尾ベースの遷移 ──
+  const suffixDay = {}; // suffix -> date -> 高設定があったか
+  allData.forEach(r => {
+    const suf = String(parseInt(r['台番号'])).slice(-1);
+    const d = String(r['日付']).substring(0,10);
+    if (!suffixDay[suf]) suffixDay[suf] = {};
+    if (isHighSetting(r)) suffixDay[suf][d] = true;
+  });
+  const suffixTransitions = [];
+  let sFollow = 0, sTotalPrevHigh = 0;
+  for (let i = 1; i < targetDates.length; i++) {
+    const prev = targetDates[i-1], cur = targetDates[i];
+    for (let s = 0; s <= 9; s++) {
+      const suf = String(s);
+      if (suffixDay[suf]?.[prev]) {
+        sTotalPrevHigh++;
+        const curHigh = !!suffixDay[suf]?.[cur];
+        if (curHigh) sFollow++;
+        suffixTransitions.push({ suf, prevDate: prev, curDate: cur, curHigh });
+      }
+    }
+  }
+  const sFollowRate = sTotalPrevHigh > 0 ? (sFollow / sTotalPrevHigh * 100) : null;
+
+  // ── サマリー表示 ──
+  const judge = (rate) => {
+    if (rate == null) return { text: '判定不可', color: 'var(--text2)' };
+    if (rate >= 60) return { text: '追従型（同じ場所に入りやすい）', color: 'var(--accent2)' };
+    if (rate <= 30) return { text: '回避型（前回と違う場所に動かす）', color: 'var(--accent3)' };
+    return { text: '混合型（はっきりした傾向なし）', color: 'var(--text)' };
+  };
+  const mJudge = judge(mFollowRate);
+  const sJudge = judge(sFollowRate);
+
+  const summaryCard = (title, rate, total, follow, jd) => `
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1rem">
+      <div style="font-size:11px;color:var(--text2);font-weight:700;margin-bottom:8px">${title}</div>
+      <div style="font-size:32px;font-weight:700;font-family:monospace;color:var(--text)">${rate!=null?rate.toFixed(1)+'%':'-'}</div>
+      <div style="font-size:11px;color:var(--text2);margin-top:2px">前回高設定 ${total}件中 ${follow}件 が継続</div>
+      <div style="font-size:12px;font-weight:700;color:${jd.color};margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">${jd.text}</div>
+    </div>`;
+
+  document.getElementById('rotation-summary').innerHTML = `
+    <div style="font-size:11px;color:var(--accent2);margin-bottom:12px">基準：${basisLabel}（${targetDates.length}回分・${targetDates[0]}〜${targetDates[targetDates.length-1]}）</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px">
+      ${summaryCard('台番号の追従率', mFollowRate, mTotalPrevHigh, mFollow, mJudge)}
+      ${summaryCard('末尾の追従率', sFollowRate, sTotalPrevHigh, sFollow, sJudge)}
+    </div>
+    <div style="font-size:11px;color:var(--text3);margin-top:12px;line-height:1.7">
+      ※追従率が高い＝前回高設定だった場所に今回も入りやすい（次回も同じ場所を狙う）。<br>
+      ※追従率が低い＝前回と違う場所に動かす店（次回は前回高設定だった場所を避ける）。
+    </div>`;
+
+  // ── 台番号ベース詳細テーブル（最新の遷移を上に） ──
+  const renderTransitionTable = (transitions, labelHead, isCorner) => {
+    if (!transitions.length) return '<div style="color:var(--text2);font-size:12px;padding:8px">追跡できる遷移がありません</div>';
+    const rows = transitions.slice().reverse().map(t => {
+      const cornerBadge = isCorner && isCorner(t) ? '<span class="badge high" style="margin-left:4px">角</span>' : '';
+      const resultBadge = t.curHigh
+        ? '<span style="color:var(--accent2);font-weight:700">●継続</span>'
+        : '<span style="color:var(--text3)">×外れ</span>';
+      return `<tr>
+        <td style="font-family:monospace;font-weight:700">${labelHead}${t.m!=null?t.m:t.suf}${cornerBadge}</td>
+        <td style="font-family:monospace;font-size:11px;color:var(--text2)">${t.prevDate.substring(5)}</td>
+        <td style="text-align:center">→</td>
+        <td style="font-family:monospace;font-size:11px;color:var(--text2)">${t.curDate.substring(5)}</td>
+        <td style="text-align:center">${resultBadge}</td>
+      </tr>`;
+    }).join('');
+    return `<div style="overflow-x:auto"><table class="data-table">
+      <thead><tr><th>対象</th><th>前回(高設定)</th><th></th><th>今回</th><th>結果</th></tr></thead>
+      <tbody>${rows}</tbody></table></div>`;
+  };
+
+  document.getElementById('rotation-machine-result').innerHTML =
+    renderTransitionTable(machineTransitions, '台', (t) => CORNER_MACHINES.includes(t.m));
+
+  document.getElementById('rotation-suffix-result').innerHTML =
+    renderTransitionTable(suffixTransitions, '末尾', null);
+}
+
+
 function renderPage(id) {
   if (id==='target') renderTarget();
   else if (id==='machinetrend') renderMachineTrend();
@@ -875,6 +1039,7 @@ function renderPage(id) {
   else if (id==='daytype') renderDaytype();
   else if (id==='zone') renderZone();
   else if (id==='daymap') renderDayMap();
+  else if (id==='rotation') renderRotation();
   else if (id==='spec') renderSpec();
   else if (id==='audit') renderAudit();
   else if (id==='heatmap') renderHeatmap();
