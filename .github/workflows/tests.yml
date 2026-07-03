@@ -1,0 +1,44 @@
+name: tests
+
+# 重い計算（合成データによる分析コアの単体テスト群）を push / PR 時に実行する。
+# コミット時の pre-commit フックは軽量チェック（構文 / div / コア一致）のみを担当し、
+# 時間のかかる検証はここ（CI）に分離している。
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # --- 軽量チェック（pre-commit と同等、CI バックストップ）---
+      - name: JS 構文チェック（analysis_*.html）
+        run: |
+          for f in analysis_*.html; do
+            [ -e "$f" ] || continue
+            node .claude/hooks/check-html-js.js "$f"
+          done
+
+      - name: 計算コア バイト一致ガード（グラン本店 = source of truth）
+        run: node .claude/hooks/check-core-bytematch.js
+
+      # --- 重い計算（分析コアの単体テスト群）---
+      - name: PredictionEngine2 品質ゲート（合成データ）
+        run: node tests/fixtures/synthetic-data-generator.js
+
+      - name: 全テストスイート（tests/*.test.js）
+        run: |
+          shopt -s nullglob
+          fail=0
+          for t in tests/*.test.js; do
+            echo "::group::$t"
+            node "$t" || fail=1
+            echo "::endgroup::"
+          done
+          exit $fail
