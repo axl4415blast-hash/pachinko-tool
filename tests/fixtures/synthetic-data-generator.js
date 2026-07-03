@@ -210,16 +210,36 @@ function loadAppScript(htmlPath) {
     if (/\bsrc\s*=/i.test(m[1] || '')) continue;
     code += m[2] + '\n';
   }
-  const stubEl = () => {
-    const el = { style: {}, value: '', textContent: '', innerHTML: '' };
-    return new Proxy(el, {
+  const elCache = new Map();
+  const stubEl = (id) => {
+    if (elCache.has(id)) return elCache.get(id);
+    // getContext/destroy は Chart.js（createChart()）が、appendChild/classList は
+    // テーブル・ページ切替（showPage等）が実際に叩くDOM APIのため no-op を用意する。
+    const el = {
+      style: {}, value: '', textContent: '', innerHTML: '',
+      getContext: () => ({}), destroy: () => {}, appendChild: () => {},
+      classList: { add: () => {}, remove: () => {}, toggle: () => {}, contains: () => false },
+    };
+    const proxy = new Proxy(el, {
       get(t, p) { if (p in t) return t[p]; if (typeof p === 'string' && (p.startsWith('add') || p === 'onchange' || p === 'onclick')) return () => {}; return t[p]; },
       set(t, p, v) { t[p] = v; return true; },
     });
+    elCache.set(id, proxy);
+    return proxy;
   };
+  let anonElCount = 0;
   const sandbox = {
     console,
-    document: { getElementById: () => stubEl(), querySelectorAll: () => [], addEventListener: () => {} },
+    // id ごとに同一の要素（プロキシ）を返す（実DOMのgetElementByIdと同様、
+    // 状態が呼び出しをまたいで保持される。以前は毎回新規オブジェクトを返しており、
+    // setLoadStatus 等で書き込んだ内容をホスト側から読み戻せなかった）。
+    document: {
+      getElementById: (id) => stubEl(id),
+      querySelector: (sel) => stubEl('__qs:' + sel),
+      querySelectorAll: () => [],
+      createElement: () => stubEl('__ce:' + (anonElCount++)),
+      addEventListener: () => {},
+    },
     localStorage: { _s: {}, getItem(k) { return this._s[k] != null ? this._s[k] : null; }, setItem(k, v) { this._s[k] = String(v); } },
     fetch: () => Promise.reject(new Error('no network in test sandbox')),
     alert: () => {}, Chart: function () { return {}; },
@@ -230,9 +250,90 @@ function loadAppScript(htmlPath) {
   return sandbox;
 }
 
+/**
+ * loadAppScript() で読み込んだサンドボックスの、トップレベル `let`/`const`
+ * 変数をホスト側から読めるようにする。
+ *
+ * 背景（Node vm の既知の挙動）：vm.runInContext で実行したスクリプトの
+ * トップレベル `let`/`const` は、そのコンテキストの「グローバル字句環境」に
+ * 束縛され、コンテキストの「グローバルオブジェクト」のプロパティにはならない。
+ * そのため `sandbox.allData = [...]`（ホスト側からの代入）や `sandbox.allData`
+ * （ホスト側からの読み取り）は、スクリプト内部の `let allData` とは別物になる
+ * （関数宣言や `var` は逆にグローバルオブジェクトのプロパティになるため、
+ * `app.fetchSheetData(...)` のような呼び出しは問題なく機能する）。
+ *
+ * この関数は、同じコンテキスト内でクロージャ経由のgetter（`configurable`な
+ * プロパティ `__exposed_<name>`）を定義し、スクリプト内部の実行中の値を
+ * ホスト側からポーリングできるようにする。
+ *
+ * @param {object} sandbox loadAppScript() の戻り値
+ * @param {string} name 読みたいトップレベル変数名（例: 'allData'）
+ * @returns {() => any} 現在値を返す関数
+ */
+function exposeGlobal(sandbox, name) {
+  const vm = require('vm');
+  if (!/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name)) throw new Error('invalid identifier: ' + name);
+  const prop = '__exposed_' + name;
+  vm.runInContext(
+    'Object.defineProperty(globalThis, ' + JSON.stringify(prop) + ', ' +
+    '{ get(){ return typeof ' + name + " !== 'undefined' ? " + name + ' : undefined; }, configurable:true });',
+    sandbox
+  );
+  return () => sandbox[prop];
+}
+
+/**
+ * exposeGlobal() の書き込み版。トップレベル `let` 変数へホスト側から値を
+ * セットする（例：`sheetName` — 本番では sheet-select の onchange ハンドラが
+ * `sheetName = select.value;` として副作用的に設定するもので、
+ * fetchSheetData() 自体は書き換えない。UIを経由せずテストする場合はこれで補う）。
+ *
+ * @param {object} sandbox loadAppScript() の戻り値
+ * @param {string} name 書き込みたいトップレベル変数名
+ * @param {*} value セットする値（JSON化できる値のみ）
+ */
+function setGlobal(sandbox, name, value) {
+  const vm = require('vm');
+  if (!/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name)) throw new Error('invalid identifier: ' + name);
+  vm.runInContext(name + ' = ' + JSON.stringify(value) + ';', sandbox);
+}
+
+const WEEKDAY_KANJI = ['日', '月', '火', '水', '木', '金', '土'];
+
+/**
+ * generateSyntheticData() が返す内部形式（総回転数/BB確率/合成確率/台番号...）の
+ * rows を、大東洋本店GASの生レスポンス形式（実際に script.google.com から返る
+ * キー名：日付='M/D'・曜日・台番・差枚・G数・BB・RB・合成・BB率・RB率）に変換する。
+ * fetchSheetData() の列名変換（G数→総回転数 等）をCIで実地に通すためのfixture生成用。
+ * ※日付はアプリの `2026-` 固定変換に合わせて年を落とす（'2026-01-07' → '1/7'）。
+ */
+function toRawGasRows(rows) {
+  return rows.map((r) => {
+    const [, mo, day] = String(r.日付).split('-');
+    const dateM_D = String(parseInt(mo, 10)) + '/' + String(parseInt(day, 10));
+    const dow = WEEKDAY_KANJI[new Date(r.日付 + 'T00:00:00').getDay()];
+    const fmtComma = (v) => Number(v).toLocaleString('en-US');
+    return {
+      日付: dateM_D,
+      曜日: dow,
+      台番: r.台番号,
+      差枚: fmtComma(r.差枚),
+      G数: fmtComma(r.総回転数),
+      BB: String(r.BB),
+      RB: String(r.RB),
+      合成: r.合成確率,
+      BB率: r.BB確率,
+      RB率: r.RB確率,
+    };
+  });
+}
+
 module.exports = {
   generateSyntheticData,
   loadAppScript,
+  exposeGlobal,
+  setGlobal,
+  toRawGasRows,
   isSpecialCommon,
   isSpecialJuggler,
   mulberry32,
