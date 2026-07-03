@@ -77,9 +77,9 @@ description: グラン本店の機能を大東洋本店へ移植する際の標�
 ## 9. push・PR反映確認
 
 - 承認後、コミットしてpushする。
-- CIがgreenであることを確認する。
-- GitHub Pagesへの反映を`last-modified`ヘッダー等の一次情報で確認する（ステータス文字列だけを信じない。過去にビルド失敗を「ビルド中」と誤認した事故がある）。
-- 5分以上「building」で停滞したら[githubstatus.com](https://www.githubstatus.com/)を確認し、必要なら失敗ジョブを再実行する。
+- CIがgreenであることを確認する（`gh run watch <run-id> --exit-status`等で実際の完了を待つ。ステータス文字列の一瞬の表示だけで判断しない）。
+- **CI成功後、7.5のmigration-verifier検証結果を、進行中PRへのコメントとして投稿する**（`gh pr comment <PR番号> --body "..."`）。7.5で得た「6項目の合格内容（バイト一致・配線実在・構文/div/未定義参照・無関係コード非混入・合成データ検証・全体チェック）」を、そのStepの検証結果に沿って要約し、CIのrun結果（run ID・green確認）も添える。これにより、各Stepの検証履歴がPR上に一次記録として残る。
+- GitHub Pagesの反映確認・「building」停滞時の対応は、7機能すべて完了してmainへマージした後に行う（進行中PRの段階ではGitHub Pagesへは反映されないため）。
 
 ---
 
