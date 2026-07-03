@@ -67,13 +67,17 @@
 - **多重比較の壁を必ず持つ**：少数サンプルで候補を多数試すと偽陽性が必ず出る。並べ替え検定/walk-forwardで「偶然かどうか」を測ってから採用。
 - **プールは合計してから割る**：確率の単純平均は禁止。回転数で重み付けする。
 - **過剰設計を嫌う**：自動レジーム検出は却下。境界が曖昧な問題に精密解を強制しない。判断は人間（ブラスト）が握る（手動期間指定など）。
-- **統計の正しさ**：forward-only厳守（対象日より前のデータだけで特徴量を作る）。信頼性収縮`count/(count+5)`を一貫適用。正規化はMantel-Haenszel層別統計。
+- **統計の正しさ**：forward-only厳守（対象日より前のデータだけで特徴量を作る）。信頼性収縮は適用するが**定数はコアごとに異なる**（下記「各コアの信頼性制御方式」参照。`count/(count+5)`は全コア共通ではなく`PredictionEngine2`固有）。正規化はMantel-Haenszel層別統計。
 - **バイト一致をquality gateにする**：計算コアはスタンドアロン`*_core.js`ファイルとして作り、合成データで検証してから埋め込み、diffで完全一致を確認する。（`SpecMatch`・`PredictorAudit`・`PredictionEngine2`・`computeCarryover`すべてこの方式）
 - **合成データ検証を毎機能必須とする**：実データ統合前に必ず単体テストを行う。
 
 ## 技術情報
 
 - **埋め込みコア一覧**：`PredictionEngine2`（狙い目エンジン）／`SpecMatch`（解析値マッチ）／`PredictorAudit`（発見監査、`compute`＋`picks`API）／`computeCarryover`（据え置き分析）。いずれもスタンドアロン`*_core.js`とバイト一致。
+- **各コアの信頼性制御方式（実コード値・改変厳禁）**：収縮の定数は**コアごとに異なる**ので「+5共通」と誤解しないこと。
+  - `PredictionEngine2`：収縮 `n/(n+5)`（＝`count/(count+5)`。この+5はこのコア固有）。
+  - `SpecMatch`：収縮 `pd/(pd+3)`（`shrinkK`既定3。`pd`＝プール日数）。
+  - `PredictorAudit`：**収縮定数なし**。最小サンプルゲート（点灯 `fY>=8`台日）＋family-wise並べ替え壁（`perm=400`の最大帰無リフトの95パーセンタイル）＋walk-forward（前半 `liftTrain>1`）で本物を選別する。
 - **LocalStorageキー**：`gas_url` / `high_criteria_v2`（高設定基準・段階制）/ `high_spec_v1`（機種別理論解析値）/ `drift_pins_<sheetName>`。
 - **高設定判定**：`isHighSetting(row, machineName?)`。段階制(tiers)＋3パターンOR。
 - **大容量HTMLの扱い**：`grep -n`でランドマーク検索→該当箇所だけ`view`。全体ロードを避ける。`node --check`で構文確認後に実行。div開閉grepでバランス確認（差1が既定値）。埋め込みコアは`*_core.js`とdiffでバイト一致を確認する。
