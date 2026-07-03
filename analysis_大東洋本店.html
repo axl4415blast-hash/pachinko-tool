@@ -123,6 +123,7 @@ body { background: var(--bg); color: var(--text); font-family: 'Noto Sans JP', s
     <button class="nav-item" onclick="showPage('daytype',this)"><div class="nav-dot"></div>特定日・曜日分析</button>
     <button class="nav-item" onclick="showPage('zone',this)"><div class="nav-dot"></div>島・ゾーン分析</button>
     <button class="nav-item" onclick="showPage('spec',this)"><div class="nav-dot"></div>🎯 解析値マッチ</button>
+    <button class="nav-item" onclick="showPage('audit',this)"><div class="nav-dot"></div>🔬 予兆発見監査</button>
     <button class="nav-item" onclick="showPage('heatmap',this)"><div class="nav-dot"></div>曜日×台番号ヒートマップ</button>
     <button class="nav-item" onclick="showPage('machinetrend',this)"><div class="nav-dot"></div>📊 機種差枚分析</button>
     <button class="nav-item" onclick="showPage('settings',this)"><div class="nav-dot"></div>高設定基準設定</button>
@@ -262,6 +263,26 @@ body { background: var(--bg); color: var(--text); font-family: 'Noto Sans JP', s
     </div>
     <div style="font-size:11px;color:var(--text2);margin:-8px 0 12px;line-height:1.6">※ 対象日と同じタイプ（特定日／通常日／翌日）の過去日だけを、対象日より前の範囲で集計します。</div>
     <div id="spec-result"></div>
+  </div>
+    <div class="page" id="page-audit">
+    <div class="page-header">
+      <div class="page-title">🔬 予兆<span>発見監査</span></div>
+      <div class="page-sub">先入観で予兆を決めず、機械生成した30候補の中から「解析値到達を実際に当てていた予兆」を、並べ替え検定とwalk-forwardであぶり出します。偶然の壁を超えたものだけを本物と認めます。</div>
+    </div>
+    <div class="card" style="display:flex;align-items:flex-end;gap:14px;flex-wrap:wrap">
+      <div><div class="card-title" style="font-size:13px;margin:0"><span id="audit-sheet-name">（機種未選択）</span> の監査</div></div>
+      <div>
+        <div class="setting-label" style="margin-bottom:4px">対象日タイプ</div>
+        <select class="setting-input" id="audit-type" style="width:150px">
+          <option value="special">特定日</option>
+          <option value="post">特定日翌日</option>
+          <option value="normal">通常日</option>
+        </select>
+      </div>
+      <button class="load-btn" style="width:auto;padding:8px 20px" onclick="renderAudit()">監査を実行</button>
+    </div>
+    <div style="font-size:11px;color:var(--text2);margin:-8px 0 12px;line-height:1.6">※ 的（到達度）は「🎯 解析値マッチ」で入力した解析値を使います。データが少ないと「壁を超える予兆なし」が正直な結果になります。</div>
+    <div id="audit-result"></div>
   </div>
 
   <!-- Heatmap（曜日×台番号ヒートマップ）-->
@@ -613,6 +634,7 @@ function renderPage(id) {
   else if (id==='daytype') renderDaytype();
   else if (id==='zone') renderZone();
   else if (id==='spec') renderSpec();
+  else if (id==='audit') renderAudit();
   else if (id==='heatmap') renderHeatmap();
 }
 
@@ -1305,6 +1327,261 @@ function renderSpec(){
     '※ これは「同タイプ日に解析値へどれだけ届いていたか」の記述です。到達度100%＝解析値ちょうど、超えるほど高設定挙動が濃い台。1日単位の当たり外れではなく複数日をまとめた平均なので、分散に振り回されにくい指標です。断定ではなく傾向として見てください。</div>';
 
   resultEl.innerHTML=head+'<div style="display:flex;flex-direction:column;gap:8px">'+rows+'</div>'+insuf+note;
+}
+// ── 予兆発見監査 計算コア（audit_core.js とバイト一致・合成検証済み） ──
+/* 予兆発見監査 実データ版コア（PredictorAudit）
+   的=解析値到達度 / 候補=機械生成30 / walk-forward + 並べ替え検定(family-wise)
+   forward-only：各対象日Dの特徴は、Dより前の該当台の実データ窓だけで作る */
+(function (root, factory){
+  if (typeof module!=='undefined' && module.exports) module.exports=factory();
+  else root.PredictorAudit=factory();
+})(typeof self!=='undefined'?self:this, function(){
+  function num(v){ if(v==null)return 0; var n=parseFloat(String(v).replace(/,/g,'')); return isNaN(n)?0:n; }
+  function pDate(ds){ var p=String(ds).substring(0,10).split('-'); return new Date(+p[0],+p[1]-1,+p[2]); }
+  function fmt(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+  function addDays(ds,n){ var d=pDate(ds); d.setDate(d.getDate()+n); return fmt(d); }
+  function dayType(ds,isSpecial){ if(isSpecial(ds))return 'special'; return isSpecial(addDays(ds,-1))?'post':'normal'; }
+  function rng(seed){ return function(){ seed|=0; seed=seed+0x6D2B79F5|0; var t=Math.imul(seed^seed>>>15,1|seed); t=t+Math.imul(t^t>>>7,61|t)^t; return((t^t>>>14)>>>0)/4294967296; }; }
+
+  var METRICS={
+    rb:   function(r){ var rot=num(r['総回転数']),rb=num(r['RB']); return (rot>0&&rb>0)?rot/rb:null; },
+    gosei:function(r){ var rot=num(r['総回転数']),x=num(r['BB'])+num(r['RB']); return (rot>0&&x>0)?rot/x:null; },
+    diff: function(r){ return num(r['差枚']); },
+    rot:  function(r){ return num(r['総回転数']); },
+    bb:   function(r){ var rot=num(r['総回転数']),bb=num(r['BB']); return (rot>0&&bb>0)?rot/bb:null; }
+  };
+  var METLABEL={rb:'RB確率',gosei:'合成確率',diff:'差枚',rot:'総回転数',bb:'BB確率'};
+  // rb/gosei/bbは分母なので bottom=小さい=良い。diff/rotは bottom=小さい。
+  var WINDOWS=[1,3,5], SIDES=['bottom','top'];
+  function candList(){ var cs=[]; for(var mk in METRICS)for(var wi=0;wi<WINDOWS.length;wi++)for(var si=0;si<SIDES.length;si++){
+    var w=WINDOWS[wi],side=SIDES[si];
+    var sideJa=(mk==='diff'||mk==='rot')?(side==='bottom'?'機種内下位1/3':'機種内上位1/3'):(side==='bottom'?'機種内ベスト1/3':'機種内ワースト1/3');
+    cs.push({key:mk+'_w'+w+'_'+side, metric:mk, w:w, side:side, label:METLABEL[mk]+'・直近'+w+'日が'+sideJa}); }
+    return cs; }
+
+  function reach(spec,row,isAt){
+    var rot=num(row['総回転数']); if(rot<=0) return null;
+    var rb=num(row['RB']); if(rb<=0) return null;
+    var ratioRB=spec.rb/(rot/rb);
+    if(isAt) return ratioRB;
+    var x=num(row['BB'])+num(row['RB']); if(x<=0) return null;
+    var ratioGosei=spec.gosei/(rot/x);
+    return 0.6*ratioRB + 0.4*ratioGosei;
+  }
+
+  function compute(allData, deps, opts){
+    opts=opts||{};
+    var spec=opts.spec, isAt=!!opts.isAt, targetType=opts.targetType||'special';
+    var minRot=opts.minRot!=null?opts.minRot:1000;
+    var P=opts.perm!=null?opts.perm:400;
+    var isSpecial=deps.isSpecialDay;
+    var dates=Array.from(new Set(allData.map(function(r){return String(r['日付']).substring(0,10);}))).sort();
+    var machines=Array.from(new Set(allData.map(function(r){return parseInt(r['台番号']);}))).sort(function(a,b){return a-b;});
+    var idxOf={}; dates.forEach(function(d,i){idxOf[d]=i;});
+    var map={}; allData.forEach(function(r){var m=parseInt(r['台番号']),d=String(r['日付']).substring(0,10);(map[m]=map[m]||{})[d]=r;});
+    function windowVal(m,i,mk,w){
+      var vals=[]; for(var k=i-1;k>=0&&vals.length<w;k--){ var r=map[m]&&map[m][dates[k]]; if(r&&num(r['総回転数'])>0){ var v=METRICS[mk](r); if(v!=null&&!isNaN(v)) vals.push(v);} }
+      if(vals.length<w) return null;
+      var s=0; vals.forEach(function(x){s+=x;}); return s/vals.length;
+    }
+    var cands=candList();
+    var targetDays=dates.filter(function(d){return dayType(d,isSpecial)===targetType;});
+    var perDay={};
+    targetDays.forEach(function(d){
+      var i=idxOf[d]; if(i<3) return;
+      var yMap={}, present=[];
+      machines.forEach(function(m){ var row=map[m]&&map[m][d]; if(!row||num(row['総回転数'])<minRot) return; var y=reach(spec,row,isAt); if(y==null) return; yMap[m]=y; present.push(m); });
+      if(present.length<3) return;
+      var firedAll={};
+      cands.forEach(function(c){
+        var arr=[]; present.forEach(function(m){ var v=windowVal(m,i,c.metric,c.w); if(v!=null) arr.push({m:m,v:v}); });
+        var fmap={};
+        if(arr.length>=3){ arr.sort(function(a,b){return a.v-b.v;});
+          arr.forEach(function(o,r){ var terc=r<arr.length/3?'bottom':r<arr.length*2/3?'mid':'top'; fmap[o.m]=(terc===c.side); }); }
+        firedAll[c.key]=fmap;
+      });
+      perDay[d]={y:yMap, fired:firedAll, present:present};
+    });
+    var validDays=Object.keys(perDay).sort();
+    var cut=Math.floor(validDays.length*0.5);
+    var trainDays=validDays.slice(0,cut), testDays=validDays.slice(cut);
+    function liftOn(days, candKey, yOv){
+      var fY=[], aY=[];
+      days.forEach(function(d){ var pd=perDay[d]; if(!pd)return; pd.present.forEach(function(m){ var y=yOv?yOv(m,d):pd.y[m]; if(y==null)return; aY.push(y); if(pd.fired[candKey]&&pd.fired[candKey][m]) fY.push(y); }); });
+      if(fY.length<8) return {lift:null,n:fY.length};
+      var mf=0;fY.forEach(function(x){mf+=x;});mf/=fY.length; var ma=0;aY.forEach(function(x){ma+=x;});ma/=aY.length;
+      return {lift:mf/ma, n:fY.length};
+    }
+    var obs=cands.map(function(c){var Lt=liftOn(trainDays,c.key), Le=liftOn(testDays,c.key); return {c:c, liftTrain:Lt.lift, liftTest:Le.lift, n:Le.n};})
+                 .filter(function(o){return o.liftTest!=null;});
+    var testRows=[]; testDays.forEach(function(d){ perDay[d].present.forEach(function(m){ testRows.push({m:m,d:d,y:perDay[d].y[m]}); }); });
+    var rnd=rng(opts.seed||12345), maxNull=[];
+    for(var p=0;p<P;p++){
+      var ys=testRows.map(function(x){return x.y;});
+      for(var q=ys.length-1;q>0;q--){var j=Math.floor(rnd()*(q+1));var tmp=ys[q];ys[q]=ys[j];ys[j]=tmp;}
+      var ym={}; testRows.forEach(function(x,ii){(ym[x.m]=ym[x.m]||{})[x.d]=ys[ii];});
+      var yOv=function(m,d){return (ym[m]&&ym[m][d]!=null)?ym[m][d]:null;};
+      var mx=0; cands.forEach(function(c){var L=liftOn(testDays,c.key,yOv); if(L.lift!=null){var e=L.lift-1; if(e>mx)mx=e;}});
+      maxNull.push(mx);
+    }
+    maxNull.sort(function(a,b){return a-b;});
+    var thr=maxNull[Math.floor(P*0.95)];
+    var ranked=obs.slice().sort(function(a,b){return b.liftTest-a.liftTest;});
+    var discovered=ranked.filter(function(o){return (o.liftTest-1)>thr && o.liftTrain!=null && o.liftTrain>1;});
+    return { targetType:targetType, nTargetDays:targetDays.length, nValidDays:validDays.length, nTestDays:testDays.length,
+             nCand:cands.length, wall:thr, discovered:discovered, ranked:ranked };
+  }
+
+  // ── 発見狙い台：壁を超えた予兆(discovered)を、未来の対象日(targetDate)に forward-only で適用 ──
+  // PredictionEngine2 の対象日スコアリングと同じパターン：
+  //   ・候補台の母集団は「実データに登場した全台番号」（対象日自体の実データは無くてよい＝未来日OK）
+  //   ・各台の指標窓（windowVal）は対象日インデックスより前のデータだけで作る（forward-only）
+  //   ・機種内tercile判定で fired/not-fired を決め、点灯した discovered 予兆の (liftTest-1) を加点
+  //   ・discovered が0件なら狙い台を出さない（isEmpty:true）
+  function picks(allData, deps, opts, targetDate, discovered){
+    opts=opts||{};
+    discovered=discovered||[];
+    var dates=Array.from(new Set(allData.map(function(r){return String(r['日付']).substring(0,10);}))).sort();
+    var machines=Array.from(new Set(allData.map(function(r){return parseInt(r['台番号']);}))).sort(function(a,b){return a-b;});
+    var map={}; allData.forEach(function(r){var m=parseInt(r['台番号']),d=String(r['日付']).substring(0,10);(map[m]=map[m]||{})[d]=r;});
+    function windowVal(m,i,mk,w){
+      var vals=[]; for(var k=i-1;k>=0&&vals.length<w;k--){ var r=map[m]&&map[m][dates[k]]; if(r&&num(r['総回転数'])>0){ var v=METRICS[mk](r); if(v!=null&&!isNaN(v)) vals.push(v);} }
+      if(vals.length<w) return null;
+      var s=0; vals.forEach(function(x){s+=x;}); return s/vals.length;
+    }
+    var idx=dates.indexOf(targetDate); if(idx<0) idx=dates.length;
+
+    if(!discovered.length){
+      return { targetDate:targetDate, isEmpty:true, ranking:[] };
+    }
+
+    var candFired={};
+    discovered.forEach(function(o){
+      var c=o.c;
+      var arr=[]; machines.forEach(function(m){ var v=windowVal(m,idx,c.metric,c.w); if(v!=null) arr.push({m:m,v:v}); });
+      var fmap={};
+      if(arr.length>=3){ arr.sort(function(a,b){return a.v-b.v;});
+        arr.forEach(function(o2,r){ var terc=r<arr.length/3?'bottom':r<arr.length*2/3?'mid':'top'; fmap[o2.m]=(terc===c.side); }); }
+      candFired[c.key]={fmap:fmap, n:arr.length};
+    });
+
+    var ranking=machines.map(function(m){
+      var score=0, fired=[];
+      discovered.forEach(function(o){
+        var c=o.c, cf=candFired[c.key];
+        if(cf && cf.fmap[m]){
+          var pts=o.liftTest-1;
+          score+=pts;
+          fired.push({key:c.key, label:c.label, liftTest:o.liftTest});
+        }
+      });
+      return { m:m, score:Math.round(score*1000)/1000, fired:fired };
+    }).filter(function(r){ return r.fired.length>0; })
+      .sort(function(a,b){ return b.score-a.score; });
+
+    return { targetDate:targetDate, isEmpty:ranking.length===0, ranking:ranking,
+             nDiscovered:discovered.length, poolSizes:Object.keys(candFired).map(function(k){return {key:k, n:candFired[k].n};}) };
+  }
+
+  return { compute:compute, picks:picks, _dayType:dayType, _candList:candList };
+});
+
+// ── 予兆発見監査（新分析）UI・描画 ──────────────────────
+function auditNextDateOfType(lastDate, targetType, isSpecial){
+  function addD(ds,n){ var p=ds.split('-'); var dt=new Date(+p[0],+p[1]-1,+p[2]); dt.setDate(dt.getDate()+n); return dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0')+'-'+String(dt.getDate()).padStart(2,'0'); }
+  var d=lastDate;
+  for(var i=0;i<40;i++){
+    d=addD(d,1);
+    var dt=isSpecial(d)?'special':(isSpecial(addD(d,-1))?'post':'normal');
+    if(dt===targetType) return d;
+  }
+  return d;
+}
+function renderAudit(){
+  if(!allData.length) return;
+  var nameEl=document.getElementById('audit-sheet-name'); if(nameEl) nameEl.textContent=sheetName||'（機種未選択）';
+  var resultEl=document.getElementById('audit-result');
+  var at=isAtMachine();
+  var spec=getSpecForSheet(sheetName);
+  if(!spec || !spec.rb || (!at && !spec.gosei)){
+    resultEl.innerHTML='<div class="card" style="border-color:rgba(255,179,71,0.35);padding:1.4rem;font-size:13px;color:var(--text2);line-height:1.9">先に「🎯 解析値マッチ」ページで理論解析値（RB確率'+(at?'':'・合成確率')+'）を入力してください。監査の的（到達度）にその値を使います。</div>';
+    return;
+  }
+  var tsel=document.getElementById('audit-type');
+  var targetType=tsel?tsel.value:'special';
+  var typeName=targetType==='special'?'特定日':targetType==='post'?'特定日翌日':'通常日';
+  resultEl.innerHTML='<div class="card" style="font-size:13px;color:var(--text2)">計算中…（並べ替え検定を回しています。数秒かかることがあります）</div>';
+  setTimeout(function(){
+    var R=PredictorAudit.compute(allData,{isSpecialDay:isSpecialDay},{spec:spec,isAt:at,targetType:targetType,perm:400,seed:20260701});
+    var head='<div class="card" style="margin-bottom:12px;font-size:12px;color:var(--text2);line-height:1.8">'+
+      '📊 <b style="color:var(--text)">'+(sheetName||'')+'</b>／的＝'+typeName+'の解析値到達度｜候補 '+R.nCand+'個｜対象日 '+R.nTargetDays+'（履歴十分 '+R.nValidDays+'／答え合わせ '+R.nTestDays+'日）｜偶然の壁 ×'+(1+R.wall).toFixed(3)+
+      '</div>';
+    if(R.nValidDays<6){
+      resultEl.innerHTML=head+'<div class="card" style="font-size:13px;color:var(--text2)">監査に使える'+typeName+'が'+R.nValidDays+'日しかありません。判定が不安定なのでデータの蓄積をお待ちください。</div>';
+      return;
+    }
+    var body;
+    if(!R.discovered.length){
+      body='<div class="card" style="border-color:rgba(255,179,71,0.35);padding:1.3rem;font-size:13px;color:var(--text2);line-height:1.9">'+
+        '<b style="color:var(--warning)">壁を超えた予兆はありませんでした。</b><br>'+
+        'この機種の'+typeName+'では、どの候補も「偶然の範囲」と統計的に区別できませんでした。無理に予兆を主張しないのが正直な結論です。データが増えると変わる可能性があります。</div>';
+    } else {
+      var cards=R.discovered.map(function(o,i){
+        return '<div class="card" style="display:flex;align-items:center;gap:14px;padding:10px 14px;border-color:rgba(232,255,71,0.4)">'+
+          '<div style="font-size:17px;font-weight:800;color:var(--accent);min-width:26px;text-align:center">'+(i+1)+'</div>'+
+          '<div style="flex:1"><div style="font-size:13px;font-weight:700">'+o.c.label+'</div>'+
+          '<div style="font-size:11px;color:var(--text3);margin-top:2px">点灯台の到達度リフト ×'+o.liftTest.toFixed(2)+'（答え合わせ）／前半でも ×'+o.liftTrain.toFixed(2)+'</div></div>'+
+          '<div style="font-size:11px;color:var(--success)">壁×'+(1+R.wall).toFixed(2)+'超え</div></div>';
+      }).join('');
+      body='<div style="font-size:12px;color:var(--text2);margin-bottom:8px">壁を超えて「偶然では説明できない」と判定された予兆（到達度が高い順）:</div>'+
+        '<div style="display:flex;flex-direction:column;gap:8px">'+cards+'</div>';
+    }
+    // 🎯 発見狙い台：壁を超えた予兆を、次の同タイプ日（既定＝最終日+1以降で最初のtargetType日）に forward-only 適用
+    var picksHtml='';
+    var lastDateForPicks=(function(){ var ds=Array.from(new Set(allData.map(function(r){return String(r['日付']).substring(0,10);}))).sort(); return ds[ds.length-1]; })();
+    var pickTargetDate=auditNextDateOfType(lastDateForPicks, targetType, isSpecialDay);
+    if(R.discovered.length){
+      var PR=PredictorAudit.picks(allData,{isSpecialDay:isSpecialDay},{},pickTargetDate,R.discovered);
+      var wd=WEEKDAY_NAMES[parseLocalDate(pickTargetDate).getDay()];
+      if(PR.isEmpty){
+        picksHtml='<div class="card" style="border-color:rgba(255,179,71,0.35);padding:1.3rem;font-size:13px;color:var(--text2);line-height:1.9;margin-bottom:12px">'+
+          '<b style="color:var(--warning)">🎯 発見狙い台：出せる台がありません。</b><br>'+
+          pickTargetDate+'（'+wd+'曜・'+typeName+'）時点で、壁を超えた予兆がどの台にも点灯していません。</div>';
+      } else {
+        var avgMargin=0; R.discovered.forEach(function(o){avgMargin+=(o.liftTest-1-R.wall);}); avgMargin/=R.discovered.length;
+        var conf=(R.nTestDays>=15&&avgMargin>=0.03)?'高':(R.nTestDays>=8&&avgMargin>=0.01)?'中':'低';
+        var confColor=conf==='高'?'var(--success)':conf==='中'?'var(--accent)':'var(--warning)';
+        var rowsP=PR.ranking.slice(0,15).map(function(o,i){
+          var labels=o.fired.map(function(f){return f.label;}).join('／');
+          return '<tr><td style="padding:4px 8px;font-weight:700">'+(i+1)+'</td>'+
+            '<td style="padding:4px 8px;font-weight:700">'+o.m+'番</td>'+
+            '<td style="padding:4px 8px;text-align:right;color:var(--accent)">+'+o.score.toFixed(3)+'</td>'+
+            '<td style="padding:4px 8px;font-size:11px;color:var(--text3)">'+labels+'</td></tr>';
+        }).join('');
+        picksHtml='<div class="card" style="margin-bottom:12px;border-color:rgba(232,255,71,0.4)">'+
+          '<div class="card-title" style="font-size:13px">🎯 発見狙い台（'+pickTargetDate+'　'+wd+'曜・'+typeName+'）</div>'+
+          '<div style="font-size:11px;color:var(--text2);margin-bottom:8px">壁を超えた予兆が点灯している台。複数点灯するほどスコアが高い。信頼度：<b style="color:'+confColor+'">'+conf+'</b>（答え合わせ'+R.nTestDays+'日・壁からの余裕 平均+'+(avgMargin*100).toFixed(1)+'%）</div>'+
+          '<table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="color:var(--text3)">'+
+          '<th style="text-align:left;padding:4px 8px">順位</th><th style="text-align:left;padding:4px 8px">台番号</th><th style="text-align:right;padding:4px 8px">スコア</th><th style="text-align:left;padding:4px 8px">点灯した予兆</th></tr></thead><tbody>'+rowsP+'</tbody></table>'+
+          '<div style="font-size:10px;color:var(--text2);margin-top:8px;line-height:1.6">※ この台が'+typeName+'に強いと断定するものではなく、「過去に同じ予兆が点灯した台は解析値到達度が高めだった」という記述です。データが増えると変わる可能性があります。</div>'+
+          '</div>';
+      }
+    }
+    // 全候補ランキング（透明性）
+    var rows=R.ranked.slice(0,12).map(function(o){
+      var beat=(o.liftTest-1)>R.wall;
+      return '<tr><td style="padding:3px 8px">'+o.c.label+'</td>'+
+        '<td style="padding:3px 8px;text-align:right;color:'+(beat?'var(--success)':'var(--text2)')+'">×'+o.liftTest.toFixed(2)+(beat?' ✓':'')+'</td>'+
+        '<td style="padding:3px 8px;text-align:right;color:var(--text3)">×'+(o.liftTrain!=null?o.liftTrain.toFixed(2):'—')+'</td>'+
+        '<td style="padding:3px 8px;text-align:right;color:var(--text3)">'+o.n+'</td></tr>';
+    }).join('');
+    var table='<div class="card" style="margin-top:12px"><div class="card-title" style="font-size:13px">全候補ランキング（上位12）</div>'+
+      '<table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="color:var(--text3)">'+
+      '<th style="text-align:left;padding:3px 8px">候補（予兆）</th><th style="text-align:right;padding:3px 8px">到達度リフト</th><th style="text-align:right;padding:3px 8px">前半</th><th style="text-align:right;padding:3px 8px">点灯数</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+    var note='<div style="font-size:11px;color:var(--text2);margin-top:12px;line-height:1.7">'+
+      '※ 「到達度リフト」＝その予兆が点灯した台の到達度が、全体平均の何倍か。関連し合う指標（RB・合成など）は束で出ることがあり、「要は直近の設定の強さを映す指標群」と読みます。壁は候補30個ぶんの偶然を並べ替えで測った家族単位の基準線です。walk-forward（前半で見て後半で答え合わせ）と併用しています。</div>';
+    resultEl.innerHTML=head+picksHtml+body+table+note;
+  }, 30);
 }
 function renderSuffix() {
   const sd={};
