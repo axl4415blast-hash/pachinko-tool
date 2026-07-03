@@ -124,6 +124,7 @@ body { background: var(--bg); color: var(--text); font-family: 'Noto Sans JP', s
     <button class="nav-item" onclick="showPage('zone',this)"><div class="nav-dot"></div>島・ゾーン分析</button>
     <button class="nav-item" onclick="showPage('daymap',this)"><div class="nav-dot"></div>📅 日別島図</button>
     <button class="nav-item" onclick="showPage('rotation',this)"><div class="nav-dot"></div>🔄 ローテーション分析</button>
+    <button class="nav-item" onclick="showPage('adjacency',this)"><div class="nav-dot"></div>🧩 島の並び文脈</button>
     <button class="nav-item" onclick="showPage('spec',this)"><div class="nav-dot"></div>🎯 解析値マッチ</button>
     <button class="nav-item" onclick="showPage('audit',this)"><div class="nav-dot"></div>🔬 予兆発見監査</button>
     <button class="nav-item" onclick="showPage('heatmap',this)"><div class="nav-dot"></div>曜日×台番号ヒートマップ</button>
@@ -290,6 +291,26 @@ body { background: var(--bg); color: var(--text); font-family: 'Noto Sans JP', s
       <div id="rotation-suffix-result"></div>
     </div>
   </div>
+
+  <!-- 島の並び文脈 -->
+  <div class="page" id="page-adjacency">
+    <div class="page-header">
+      <div class="page-title">🧩 島の並び<span>文脈</span></div>
+      <div class="page-sub">高設定が「隣同士で固まる店」か「散らす店」かを判定します（同じ列の前後1台を隣とみなします）</div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">この店の並び傾向</div>
+      <div id="adjacency-summary"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">🔗 連（れん）の検出：同じ日に2台以上連続で高設定だった並び</div>
+      <div style="font-size:11px;color:var(--text2);margin-bottom:10px">固め置きの「証拠」。同じ列で物理的に隣り合う台が同じ日にまとめて高設定だったケースを新しい順に並べます。</div>
+      <div id="adjacency-runs"></div>
+    </div>
+  </div>
+
 
 
     <div class="page" id="page-spec">
@@ -798,7 +819,7 @@ function setLoadStatus(msg, type) {
   el.style.color = type==='error'?'var(--error)':type==='success'?'var(--success)':'var(--text2)';
 }
 function renderAllPages() {
-  ['target','overview','suffix','daytype','correlation','interval','zone','heatmap','machinetrend','daymap','rotation'].forEach(id => renderPage(id));
+  ['target','overview','suffix','daytype','correlation','interval','zone','heatmap','machinetrend','daymap','rotation','adjacency'].forEach(id => renderPage(id));
 }
 
 // ── 日別島図 ──────────────────────────────
@@ -1031,6 +1052,151 @@ function renderRotationBody() {
     renderTransitionTable(suffixTransitions, '末尾', null);
 }
 
+let adjacencyLiftCache = {};
+
+function renderAdjacency() {
+  const ZONES = getZones();
+  const CORNER_MACHINES = getCornerMachines();
+
+  // 台→日→高設定マップ
+  const machineDay = {};
+  const datesSet = new Set();
+  allData.forEach(r => {
+    const m = parseInt(r['台番号']);
+    const d = String(r['日付']).substring(0,10);
+    if (!machineDay[m]) machineDay[m] = {};
+    machineDay[m][d] = isHighSetting(r);
+    datesSet.add(d);
+  });
+  const allDatesA = [...datesSet].sort();
+
+  // ── 隣接リフト計算（隣接ペアを双方向で集計：角台/中間台の偏りを排除）──
+  let aHigh = 0, aHighNbrHigh = 0;   // focal=高設定
+  let bLow  = 0, bLowNbrHigh  = 0;   // focal=非高設定
+  const runsByDate = {};             // 日付 -> [{zoneLabel, machines, len}]
+
+  allDatesA.forEach(d => {
+    ZONES.forEach(z => {
+      const seq = z.machines;
+      const states = seq.map(m => (machineDay[m] && (d in machineDay[m])) ? machineDay[m][d] : null);
+
+      // 隣接ペア（i, i+1）を双方向で集計
+      for (let i = 0; i + 1 < seq.length; i++) {
+        const a = states[i], b = states[i+1];
+        if (a === null || b === null) continue;
+        if (a === true) { aHigh++; if (b === true) aHighNbrHigh++; }
+        else            { bLow++;  if (b === true) bLowNbrHigh++;  }
+        if (b === true) { aHigh++; if (a === true) aHighNbrHigh++; }
+        else            { bLow++;  if (a === true) bLowNbrHigh++;  }
+      }
+
+      // 連検出（2台以上連続の高設定）
+      let runStart = -1;
+      for (let i = 0; i <= seq.length; i++) {
+        const hi = (i < seq.length && states[i] === true);
+        if (hi && runStart === -1) runStart = i;
+        if (!hi && runStart !== -1) {
+          const len = i - runStart;
+          if (len >= 2) {
+            (runsByDate[d] = runsByDate[d] || []).push({ zoneLabel: z.label, machines: seq.slice(runStart, i), len });
+          }
+          runStart = -1;
+        }
+      }
+    });
+  });
+
+  const A = aHigh > 0 ? aHighNbrHigh / aHigh : 0;
+  const B = bLow  > 0 ? bLowNbrHigh  / bLow  : 0;
+  const lift = (B > 0) ? (A / B) : (A > 0 ? Infinity : 0);
+  const enough = aHigh >= 20 && bLow >= 20;
+
+  let verdict, vColor, vDesc;
+  if (!enough) {
+    verdict = 'データ不足'; vColor = 'var(--text2)';
+    vDesc = '判定に必要なサンプルがまだ足りません（隣接ペアの観測が各20件以上で安定します）。データが増えると判定できるようになります。';
+  } else if (lift === Infinity || lift >= 1.3) {
+    verdict = '固め置き傾向'; vColor = '#ff6b47';
+    vDesc = 'この店は、同じ日のなかで高設定を隣同士に固めて置くクセがあります。これは「置き方の性格」であって、特定の台が翌日に高設定化するという予測ではありません。実戦での使い方：当日ある台が高設定だと判明したとき「その隣も高設定の可能性が高い」という同日内の判断に使えます。';
+  } else if (lift <= 0.7) {
+    verdict = 'バラし傾向'; vColor = '#47c8ff';
+    vDesc = 'この店は、同じ日のなかで高設定を隣り合わせにしない（散らす）クセがあります。当日ある台が高設定でも「その隣は高設定でない可能性が高い」という同日内の判断に使えます。翌日の予測ではありません。';
+  } else {
+    verdict = '傾向なし'; vColor = 'var(--text2)';
+    vDesc = '隣接と高設定の間に、同じ日のなかで明確な関係は見られません。この機種では「隣の状態」は同日内の判断材料になりにくいです。';
+  }
+
+  // 後の「狙い目台」再設計で再利用するキャッシュ
+  adjacencyLiftCache[sheetName] = { lift, A, B, aHigh, bLow, enough, verdict };
+
+  // ── サマリー描画 ──
+  const liftStr = (lift === Infinity) ? '∞' : lift.toFixed(2);
+  document.getElementById('adjacency-summary').innerHTML =
+    '<div style="display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin-bottom:14px">' +
+      '<div style="font-size:40px;font-weight:700;font-family:monospace,monospace;color:' + vColor + '">' + liftStr + '</div>' +
+      '<div>' +
+        '<div style="font-size:16px;font-weight:700;color:' + vColor + '">' + verdict + '</div>' +
+        '<div style="font-size:11px;color:var(--text2)">隣接リフト（A÷B）</div>' +
+      '</div>' +
+    '</div>' +
+    '<div style="font-size:13px;color:var(--text);line-height:1.7;margin-bottom:14px">' + vDesc + '</div>' +
+    '<div style="display:flex;gap:10px;flex-wrap:wrap">' +
+      '<div style="flex:1;min-width:150px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:12px">' +
+        '<div style="font-size:11px;color:var(--accent3)">A：高設定台の隣も高設定だった率</div>' +
+        '<div style="font-size:22px;font-weight:700;font-family:monospace,monospace;color:var(--text)">' + (A*100).toFixed(1) + '%</div>' +
+        '<div style="font-size:10px;color:var(--text2)">' + aHighNbrHigh + '/' + aHigh + '（隣接ペア観測）</div>' +
+      '</div>' +
+      '<div style="flex:1;min-width:150px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:12px">' +
+        '<div style="font-size:11px;color:var(--text2)">B：非高設定台の隣が高設定だった率</div>' +
+        '<div style="font-size:22px;font-weight:700;font-family:monospace,monospace;color:var(--text)">' + (B*100).toFixed(1) + '%</div>' +
+        '<div style="font-size:10px;color:var(--text2)">' + bLowNbrHigh + '/' + bLow + '（隣接ペア観測）</div>' +
+      '</div>' +
+    '</div>' +
+    '<div style="font-size:11px;color:var(--text2);margin-top:12px;line-height:1.6">' +
+      '※ リフト＝A÷B。1.3以上で固め置き、0.7以下でバラし、中間は傾向なしと判定します。<br>' +
+      '※ 「隣」は同じ列で物理的に前後1台。隣接ペア単位で双方向に数えるため、角台と中間台の隣の数の差による偏りは出ません。<br>' +
+      '※ <b>この指標は「同じ日に高設定が隣り合うか」という置き方のクセを測るものです。翌日の予測そのものではありません。</b>翌日予測に使うには、このクセが「どこへ動くか」を見る時系列分析（④で実装予定）と組み合わせます。' +
+    '</div>';
+
+  // ── 連テーブル描画（新しい順）──
+  const runDates = Object.keys(runsByDate).sort().reverse();
+  if (runDates.length === 0) {
+    document.getElementById('adjacency-runs').innerHTML =
+      '<div style="color:var(--text2);font-size:13px;padding:8px">2台以上連続で高設定だった並びは見つかりませんでした。</div>';
+  } else {
+    let rows = '';
+    let shown = 0;
+    for (const d of runDates) {
+      const sp = isSpecialDay(d);
+      runsByDate[d].sort((x,y)=>y.len-x.len);
+      for (const run of runsByDate[d]) {
+        const cells = run.machines.map(m => {
+          const corner = CORNER_MACHINES.includes(m);
+          return '<span style="display:inline-block;background:rgba(255,107,71,0.18);border:1px solid #ff6b47;border-radius:4px;padding:2px 7px;margin:2px;font-family:monospace,monospace;font-size:12px;color:var(--text)">' + m + (corner ? '<span style="color:var(--accent3);font-size:9px"> 角</span>' : '') + '</span>';
+        }).join('');
+        rows +=
+          '<tr style="border-bottom:1px solid var(--border)">' +
+            '<td style="padding:8px 10px;white-space:nowrap;font-family:monospace,monospace;font-size:12px;color:var(--text2)">' + d + (sp ? '<br><span style="color:var(--accent3);font-size:10px">特定日</span>' : '') + '</td>' +
+            '<td style="padding:8px 10px;font-size:12px;color:var(--text2);white-space:nowrap">' + run.zoneLabel + '</td>' +
+            '<td style="padding:8px 10px">' + cells + '</td>' +
+            '<td style="padding:8px 10px;text-align:center;font-family:monospace,monospace;font-weight:700;color:#ff6b47">' + run.len + '台</td>' +
+          '</tr>';
+        shown++;
+      }
+      if (shown >= 80) break;
+    }
+    document.getElementById('adjacency-runs').innerHTML =
+      '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse">' +
+        '<thead><tr style="border-bottom:2px solid var(--border)">' +
+          '<th style="padding:8px 10px;text-align:left;font-size:11px;color:var(--text2)">日付</th>' +
+          '<th style="padding:8px 10px;text-align:left;font-size:11px;color:var(--text2)">列</th>' +
+          '<th style="padding:8px 10px;text-align:left;font-size:11px;color:var(--text2)">連続して高設定だった並び</th>' +
+          '<th style="padding:8px 10px;text-align:center;font-size:11px;color:var(--text2)">長さ</th>' +
+        '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+  }
+}
+
+
 
 function renderPage(id) {
   if (id==='target') renderTarget();
@@ -1040,6 +1206,7 @@ function renderPage(id) {
   else if (id==='zone') renderZone();
   else if (id==='daymap') renderDayMap();
   else if (id==='rotation') renderRotation();
+  else if (id==='adjacency') renderAdjacency();
   else if (id==='spec') renderSpec();
   else if (id==='audit') renderAudit();
   else if (id==='heatmap') renderHeatmap();

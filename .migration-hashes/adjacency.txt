@@ -1,0 +1,14 @@
+# Step3: 島の並び文脈（adjacency）移植の抽出元ハッシュ
+# コピー元：analysis_グラン本店.html（384-401行目=HTML, 3407-3549行目=関数）
+# 関数ブロックの開始点は見出しコメントではなく、モジュールレベルのキャッシュ変数
+# let adjacencyLiftCache = {}; （関数内3482行目で参照されるため含める必要あり）
+# 2026-07-04 daitoyo-7features ブランチで大東洋本店へ挿入。
+[html]
+start_marker=<!-- 島の並び文脈 -->
+lines=18
+sha256=3ac5d4508cc5fb3d605fc05ae6c6ee19cb3f71f7d49c59774ecac33f8f58f048
+
+[func]
+start_marker=let adjacencyLiftCache = {};
+lines=143
+sha256=8e0539e07d3f84bb16645df06d3afe935f9cef6ab5b31933c0c68a2c1b526543
