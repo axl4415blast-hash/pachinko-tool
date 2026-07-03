@@ -1,0 +1,64 @@
+name: deploy-pages
+
+# GitHub Pages を「GitHub Actions」配信方式で管理下に置くワークフロー。
+# 従来（build_type: legacy = ブランチからの自動デプロイ）では、実際に
+# 「pages build and deployment」というGitHub管理の非公開ワークフローが
+# 裏で動いており、deployステップが "Deployment failed, try again later."
+# という一時的なエラーで失敗しても、こちらから re-run 以外の制御ができなかった。
+# このワークフローに切り替えることで、リトライ等の挙動を自分たちで管理できる。
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy1.outputs.page_url || steps.deploy2.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: '.'
+
+      # deployは "Deployment failed, try again later." のような一時的なエラーで
+      # 失敗することがあるため、1回だけ自動リトライする。
+      - name: Deploy to GitHub Pages (attempt 1)
+        id: deploy1
+        uses: actions/deploy-pages@v4
+        continue-on-error: true
+
+      - name: Wait before retry
+        if: steps.deploy1.outcome == 'failure'
+        run: |
+          echo "1回目のデプロイが失敗したため、30秒待ってリトライします。"
+          sleep 30
+
+      - name: Deploy to GitHub Pages (retry, attempt 2)
+        id: deploy2
+        if: steps.deploy1.outcome == 'failure'
+        uses: actions/deploy-pages@v4
+
+      - name: Fail job if both attempts failed
+        if: steps.deploy1.outcome == 'failure' && steps.deploy2.outcome == 'failure'
+        run: |
+          echo "::error::デプロイが2回とも失敗しました。githubstatus.com を確認してください。"
+          exit 1
