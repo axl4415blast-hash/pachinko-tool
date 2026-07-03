@@ -5,6 +5,9 @@
 #   2) 構造：<div> 開閉バランス（|open-close| <= 1、CLAUDE.md 既定差1）
 #   3) コア一致：埋め込み計算コア（PredictionEngine2/SpecMatch/PredictorAudit）が
 #      グラン本店の同名コアとバイト一致（LF正規化）
+#   4) 未定義参照：ファイル内のどこにも定義がない識別子への参照（check-undefined-refs.js）。
+#      node --check は通るがブラウザ実行時にのみ ReferenceError になるバグ
+#      （Step3で共有定義 ZONE_CONFIGS を巻き込み削除した実例）を検出するためのガード。
 # 重い計算（合成データによる engine/SpecMatch/PredictorAudit の単体テスト群）は
 # コミット時には走らせない。GitHub Actions（.github/workflows/tests.yml、push/PR時）へ分離。
 # Any non-commit Bash command is allowed silently (exit 0).
@@ -61,6 +64,10 @@ for f in analysis_*.html; do
     echo "pre-commit-check: [$f] div開閉バランス崩れ（open=$o close=$c diff=$((o-c))）" >&2
     FAIL=1
   fi
+  # 4) 未定義参照チェック（軽量静的解析）
+  if ! node "$SCRIPT_DIR/check-undefined-refs.js" "$f"; then
+    FAIL=1
+  fi
 done
 
 if [ "$FOUND" -eq 0 ]; then
@@ -79,5 +86,5 @@ if [ "$FAIL" -ne 0 ]; then
   exit 2
 fi
 
-echo "pre-commit-check: 構文OK / div balance OK / コア一致OK。" >&2
+echo "pre-commit-check: 構文OK / div balance OK / コア一致OK / 未定義参照なし。" >&2
 exit 0
