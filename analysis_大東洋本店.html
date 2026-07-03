@@ -122,6 +122,7 @@ body { background: var(--bg); color: var(--text); font-family: 'Noto Sans JP', s
     <button class="nav-item" onclick="showPage('suffix',this)"><div class="nav-dot"></div>末尾番号傾向</button>
     <button class="nav-item" onclick="showPage('daytype',this)"><div class="nav-dot"></div>特定日・曜日分析</button>
     <button class="nav-item" onclick="showPage('zone',this)"><div class="nav-dot"></div>島・ゾーン分析</button>
+    <button class="nav-item" onclick="showPage('daymap',this)"><div class="nav-dot"></div>📅 日別島図</button>
     <button class="nav-item" onclick="showPage('spec',this)"><div class="nav-dot"></div>🎯 解析値マッチ</button>
     <button class="nav-item" onclick="showPage('audit',this)"><div class="nav-dot"></div>🔬 予兆発見監査</button>
     <button class="nav-item" onclick="showPage('heatmap',this)"><div class="nav-dot"></div>曜日×台番号ヒートマップ</button>
@@ -226,6 +227,40 @@ body { background: var(--bg); color: var(--text); font-family: 'Noto Sans JP', s
       <div id="zone-heatmap"></div>
     </div>
   </div>
+
+  <!-- 日別島図 -->
+  <div class="page" id="page-daymap">
+    <div class="page-header">
+      <div class="page-title">📅 日別<span>島図</span></div>
+      <div class="page-sub">選んだ日に実際どの台に高設定が入っていたかを島の配置で確認</div>
+    </div>
+
+    <div class="card">
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <label style="font-size:12px;color:var(--text2)">日付を選択</label>
+        <select id="daymap-date-select" style="background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:var(--radius);padding:8px 12px;font-size:13px"></select>
+      </div>
+    </div>
+
+    <div class="card" id="daymap-info" style="display:none">
+      <div style="display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--text2)">
+        <span id="daymap-date-label" style="font-size:14px;font-weight:700;color:var(--text)"></span>
+        <span id="daymap-weekday-label"></span>
+        <span id="daymap-daytype-label"></span>
+        <span id="daymap-highcount-label"></span>
+      </div>
+    </div>
+
+    <div class="card" style="display:flex;gap:16px;flex-wrap:wrap;font-size:11px;color:var(--text2);align-items:center">
+      <div style="display:flex;align-items:center;gap:6px"><div style="width:14px;height:14px;border-radius:3px;background:#ff3b30"></div>高設定</div>
+      <div style="display:flex;align-items:center;gap:6px"><div style="width:14px;height:14px;border-radius:3px;background:var(--surface2);border:1px solid var(--border)"></div>通常</div>
+      <div style="display:flex;align-items:center;gap:6px"><div style="width:14px;height:14px;border-radius:3px;background:var(--surface);border:1px dashed var(--text3)"></div>データなし</div>
+      <div style="display:flex;align-items:center;gap:6px"><div style="width:14px;height:14px;border-radius:3px;background:var(--surface2);border:2px solid var(--accent2)"></div>角台</div>
+    </div>
+
+    <div class="card" id="daymap-result"></div>
+  </div>
+
     <div class="page" id="page-spec">
     <div class="page-header">
       <div class="page-title">🎯 解析値<span>マッチ</span></div>
@@ -732,14 +767,114 @@ function setLoadStatus(msg, type) {
   el.style.color = type==='error'?'var(--error)':type==='success'?'var(--success)':'var(--text2)';
 }
 function renderAllPages() {
-  ['target','overview','suffix','daytype','correlation','interval','zone','heatmap','machinetrend'].forEach(id => renderPage(id));
+  ['target','overview','suffix','daytype','correlation','interval','zone','heatmap','machinetrend','daymap'].forEach(id => renderPage(id));
 }
+
+// ── 日別島図 ──────────────────────────────
+function renderDayMap() {
+  const ZONES = getZones();
+  const CORNER_MACHINES = getCornerMachines();
+
+  // データが存在する日付を新しい順に抽出
+  const allDates = [...new Set(allData.map(r => String(r['日付']).substring(0,10)))].sort((a,b)=>b.localeCompare(a));
+
+  const select = document.getElementById('daymap-date-select');
+  if (allDates.length === 0) {
+    select.innerHTML = '<option value="">データがありません</option>';
+    document.getElementById('daymap-info').style.display = 'none';
+    document.getElementById('daymap-result').innerHTML = '';
+    return;
+  }
+
+  const prevSelected = select.value;
+  select.innerHTML = allDates.map(d => {
+    const wd = WEEKDAY_NAMES[getWeekday(d)];
+    const tag = isSpecialDay(d) ? '【特定日】' : '';
+    return `<option value="${d}">${d}（${wd}）${tag}</option>`;
+  }).join('');
+
+  // 前回選択していた日付が今も存在すれば復元、なければ最新日を選択
+  select.value = allDates.includes(prevSelected) ? prevSelected : allDates[0];
+  select.onchange = null;
+  select.onchange = () => renderDayMapBody(select.value, ZONES, CORNER_MACHINES);
+
+  renderDayMapBody(select.value, ZONES, CORNER_MACHINES);
+}
+
+function renderDayMapBody(targetDate, ZONES, CORNER_MACHINES) {
+  if (!targetDate) return;
+
+  // 選択日のデータを台番号→行データのマップに変換
+  const dayRows = {};
+  allData.forEach(r => {
+    if (String(r['日付']).substring(0,10) === targetDate) {
+      dayRows[parseInt(r['台番号'])] = r;
+    }
+  });
+
+  const wd = WEEKDAY_NAMES[getWeekday(targetDate)];
+  const special = isSpecialDay(targetDate);
+  let highCount = 0;
+
+  // 情報バー表示
+  document.getElementById('daymap-info').style.display = 'flex';
+  document.getElementById('daymap-date-label').textContent = targetDate;
+  document.getElementById('daymap-weekday-label').textContent = wd + '曜日';
+  document.getElementById('daymap-daytype-label').textContent = special ? '特定日' : '通常日';
+
+  // ゾーンごとにグリッド生成
+  const html = ZONES.map((z, zi) => {
+    const cells = z.machines.map(m => {
+      const row = dayRows[m];
+      const isCorner = CORNER_MACHINES.includes(m);
+      let bg = 'var(--surface)', border = '1px dashed var(--text3)', textColor = 'var(--text3)';
+      let sub = 'データなし';
+
+      if (row) {
+        const high = isHighSetting(row);
+        if (high) {
+          highCount++;
+          bg = '#ff3b30';
+          border = '1px solid #ff3b30';
+          textColor = '#fff';
+          sub = '高設定';
+        } else {
+          bg = 'var(--surface2)';
+          border = '1px solid var(--border)';
+          textColor = 'var(--text2)';
+          sub = '通常';
+        }
+      }
+
+      if (isCorner) border = '2px solid var(--accent2)';
+
+      return `
+        <div style="background:${bg};border:${border};border-radius:6px;padding:8px 4px;text-align:center;min-width:54px">
+          <div style="font-size:11px;color:${textColor};font-family:'Courier New',monospace;font-weight:700">${m}${isCorner?'<span style="color:var(--accent2);font-size:9px;margin-left:2px">角</span>':''}</div>
+          <div style="font-size:10px;color:${textColor};margin-top:2px;opacity:0.85">${sub}</div>
+        </div>
+      `;
+    }).join('');
+
+    return `
+      <div style="margin-bottom:1.25rem">
+        <div style="font-size:11px;color:${ZONE_COLORS[zi]};font-weight:700;letter-spacing:1px;margin-bottom:8px">${z.label}</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px">${cells}</div>
+      </div>
+    `;
+  }).join('');
+
+  document.getElementById('daymap-highcount-label').textContent = '高設定 ' + highCount + '台';
+  document.getElementById('daymap-result').innerHTML = html;
+}
+
 function renderPage(id) {
   if (id==='target') renderTarget();
   else if (id==='machinetrend') renderMachineTrend();
   else if (id==='suffix') renderSuffix();
   else if (id==='daytype') renderDaytype();
   else if (id==='zone') renderZone();
+  else if (id==='daymap') renderDayMap();
   else if (id==='spec') renderSpec();
   else if (id==='audit') renderAudit();
   else if (id==='heatmap') renderHeatmap();
