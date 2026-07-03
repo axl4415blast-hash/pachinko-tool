@@ -97,6 +97,7 @@
 - [ ] **合成データテストは「例外が出ない」で満足しない**：仕込みシグナル（良い挙動を仕込んだ台）と非仕込み台とでスコアが明確に分離するか、二値化していないか（連続値の異なり数）まで確認する。エンジンが空の合成データに対して静かにno-opしているだけ、というケースを見逃さない。
 - [ ] **pre-commit hookは軽量チェックのみに絞る**：構文・div開閉バランス・コアのバイト一致など高速なものだけをコミット時に実行する。合成データによる重い単体テスト（並べ替え検定など）はGitHub Actions（push/PR時）に分離する。
 - [ ] **GitHub Pagesのデプロイが「building」で5分以上停滞したら異常とみなす**：[githubstatus.com](https://www.githubstatus.com/)でGitHub側の障害有無を確認し、`POST /repos/{owner}/{repo}/actions/runs/{run_id}/rerun-failed-jobs`で該当ワークフローの失敗ジョブを再実行する。
+- [ ] **Claude CodeのPreToolUseフック（`.claude/settings.json`）は「発火しないことがある」既知の不具合パターンがある**（2026-07-03判明。GitHub issue #6305, #11544 等で報告されている現象と一致）。実際にこのセッションでBashツール経由の`git commit`が2回連続でブロックされず、デバッグマーカーで検証した結果、`git commit`に限らずあらゆるBashツール呼び出しに対してフックが一切発火しないことを確認した。**確実な砦は`.git/hooks/pre-commit`（git本体のネイティブフック。core.hooksPath未設定ならデフォルトの`.git/hooks/pre-commit`が常に呼ばれる）である。** 実チェックロジックは`.claude/hooks/run-quality-checks.sh`に一本化されており、`.claude/hooks/pre-commit-check.sh`（PreToolUse用の薄いラッパー）と`.git/hooks/pre-commit`（git本体用の薄いラッパー）の両方がこれを呼ぶ。PreToolUse側の定義は「効くこともある二重の安全網」という位置づけで残してあるが、**`.git/hooks/pre-commit`はgit管理外（`.git/`配下）のためリポジトリを再clone/新規worktreeした場合は手動で再作成が必要**（内容は`.claude/hooks/run-quality-checks.sh`を呼ぶ数行のラッパーのみ）。過去の「コア四機能移植」コミット履歴を調査したが、フックが実際に発火していたことを示す直接証拠（ブロック→修正→再コミットのパターン等）はreflog上に見つからなかった（ただし拒否されたコミットはgit履歴に残らないため、この不在は「発火していた」「発火していなかった」のどちらの証明にもならない）。
 
 ## 進め方のルール（Claude Code移行後も継続）
 
