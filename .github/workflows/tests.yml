@@ -28,6 +28,9 @@ jobs:
       - name: 計算コア バイト一致ガード（グラン本店 = source of truth）
         run: node .claude/hooks/check-core-bytematch.js
 
+      - name: 移植ハッシュ照合（.migration-hashes/*.txt）
+        run: node .claude/hooks/check-migration-hashes.js
+
       # --- 重い計算（分析コアの単体テスト群）---
       - name: PredictionEngine2 品質ゲート（合成データ）
         run: node tests/fixtures/synthetic-data-generator.js
