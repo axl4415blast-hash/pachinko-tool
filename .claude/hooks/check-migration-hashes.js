@@ -86,12 +86,23 @@ for (const file of files) {
       continue;
     }
     const n = parseInt(lines, 10);
-    const startIdx = dstLines.findIndex(l => l.includes(start_marker));
-    if (startIdx === -1) {
+    // マーカーは常に一意であるべき。複数マッチは「ブロックの二重挿入」等の疑いがあり、
+    // 先頭だけ検証して2つ目以降を見逃す（driftFmt孤児と同種の無言ドリフト）ため FAIL とする。
+    const matchIdxs = [];
+    for (let i = 0; i < dstLines.length; i++) {
+      if (dstLines[i].includes(start_marker)) matchIdxs.push(i);
+    }
+    if (matchIdxs.length === 0) {
       console.error(`  [FAIL] ${feature}/${blockName}: マーカー "${start_marker}" が大東洋本店側に見つかりません`);
       failed++;
       continue;
     }
+    if (matchIdxs.length > 1) {
+      console.error(`  [FAIL] ${feature}/${blockName}: マーカー "${start_marker}" が${matchIdxs.length}箇所に重複（行 ${matchIdxs.map(i => i + 1).join(', ')}）。マーカーは一意であるべき（ブロックの二重挿入を疑ってください）。`);
+      failed++;
+      continue;
+    }
+    const startIdx = matchIdxs[0];
     if (startIdx + n > dstLines.length) {
       console.error(`  [FAIL] ${feature}/${blockName}: マーカー位置(行${startIdx + 1})から${n}行取れません（ファイル末尾まで${dstLines.length - startIdx}行）`);
       failed++;
