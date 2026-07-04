@@ -106,6 +106,26 @@ body { background: var(--bg); color: var(--text); font-family: 'Noto Sans JP', s
   .suffix-grid { grid-template-columns: repeat(5, 1fr); }
   #load-status { font-size: 10px; }
 }
+/* ── 傾向ドリフト ── */
+.diag-banner{background:linear-gradient(90deg,rgba(232,255,71,.08),rgba(71,200,255,.05));border:1px solid rgba(232,255,71,.3);border-radius:var(--radius);padding:14px 16px;margin:0 0 16px;font-size:14px;line-height:1.6}
+.diag-banner b{color:var(--accent)}
+.drift-sec-label{font-size:11px;color:var(--text2);font-weight:700;letter-spacing:1px;margin:6px 0 10px;text-transform:uppercase;display:flex;align-items:center;gap:8px}
+.drift-sec-label::after{content:"";flex:1;height:1px;background:var(--border)}
+.drift-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px}
+@media(max-width:760px){.drift-grid{grid-template-columns:1fr}}
+.drift-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px}
+.drift-card.pinned{border-color:rgba(232,255,71,.45);background:linear-gradient(180deg,rgba(232,255,71,.03),var(--surface))}
+.drift-mhead{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:8px}
+.drift-mtitle{font-size:13px;font-weight:700;line-height:1.4}
+.drift-mtitle small{display:block;font-weight:400;color:var(--text2);font-size:10px;margin-top:2px}
+.drift-pin-btn{background:none;border:1px solid var(--border);color:var(--text2);border-radius:6px;cursor:pointer;font-size:13px;padding:3px 8px;flex-shrink:0;transition:all .15s}
+.drift-pin-btn:hover{border-color:var(--accent);color:var(--accent)}
+.drift-pin-btn.on{background:rgba(232,255,71,.15);border-color:var(--accent);color:var(--accent)}
+.drift-chip{font-size:10px;padding:2px 8px;border-radius:20px;font-weight:700;white-space:nowrap;display:inline-block;margin-bottom:8px}
+.drift-chip.move{background:rgba(71,255,138,.14);color:var(--success);border:1px solid rgba(71,255,138,.4)}
+.drift-chip.flat{background:rgba(120,120,120,.14);color:var(--text2);border:1px solid var(--border)}
+.drift-chip.nd{background:rgba(255,179,71,.12);color:var(--warning);border:1px solid rgba(255,179,71,.35)}
+.drift-chart-wrap{position:relative;height:180px}
 </style>
 </head>
 <body>
@@ -119,6 +139,7 @@ body { background: var(--bg); color: var(--text); font-family: 'Noto Sans JP', s
   <div class="nav-section">
     <div class="nav-label">分析メニュー</div>
     <button class="nav-item active" onclick="showPage('target',this)"><div class="nav-dot"></div>🎯 明日の狙い目台</button>
+    <button class="nav-item" onclick="showPage('drift',this)"><div class="nav-dot"></div>📉 傾向ドリフト</button>
     <button class="nav-item" onclick="showPage('suffix',this)"><div class="nav-dot"></div>末尾番号傾向</button>
     <button class="nav-item" onclick="showPage('daytype',this)"><div class="nav-dot"></div>特定日・曜日分析</button>
     <button class="nav-item" onclick="showPage('zone',this)"><div class="nav-dot"></div>島・ゾーン分析</button>
@@ -182,6 +203,30 @@ body { background: var(--bg); color: var(--text); font-family: 'Noto Sans JP', s
       ※ 分析期間はバックテストに使う範囲です。店長交代など傾向が変わった時期を避けたいときは、開始日を後ろにずらして直近だけで計算できます（既定は全期間）。
     </div>
     <div id="target-result"></div>
+  </div>
+
+  <!-- 傾向ドリフト -->
+  <div class="page" id="page-drift">
+    <div class="page-header">
+      <div class="page-title">📉 傾向<span>ドリフト</span>（店のクセの推移）</div>
+      <div class="page-sub" id="drift-sub">週次で店のクセを可視化。段差＝方針が変わった可能性を、あなたが答え合わせする画面です。</div>
+    </div>
+    <div class="card" style="line-height:1.7;font-size:12px;color:var(--text2)">
+      日々の数字ではなく「店のクセのベクトル」を週ごとに折れ線で見ます。どれが重要かは店・時期で変わるため、機械は主役を決めません。
+      各グラフの<b style="color:var(--text)">「直近の動き」タグ</b>を手がかりに、気になる軸は <b style="color:var(--accent)">📌</b> で上に固定できます（店ごとに保存）。
+    </div>
+    <div class="diag-banner" id="drift-diag"></div>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:0 0 16px">
+      <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text2);cursor:pointer;background:var(--surface2);border:1px solid var(--border);padding:8px 14px;border-radius:20px">
+        <input type="checkbox" id="drift-smooth" style="accent-color:var(--accent)"> 3週移動平均で均す
+      </label>
+    </div>
+    <div id="drift-pinned-section" style="display:none">
+      <div class="drift-sec-label">📌 ピン留め（重視中）</div>
+      <div class="drift-grid" id="drift-pinned-row"></div>
+    </div>
+    <div class="drift-sec-label" id="drift-others-label">すべての指標</div>
+    <div class="drift-grid" id="drift-unpinned-row"></div>
   </div>
 
   <!-- Suffix -->
@@ -883,7 +928,7 @@ function setLoadStatus(msg, type) {
   el.style.color = type==='error'?'var(--error)':type==='success'?'var(--success)':'var(--text2)';
 }
 function renderAllPages() {
-  ['target','overview','suffix','daytype','correlation','interval','zone','heatmap','machinetrend','daymap','rotation','adjacency','halltype','trend'].forEach(id => renderPage(id));
+  ['target','drift','overview','suffix','daytype','correlation','interval','zone','heatmap','machinetrend','daymap','rotation','adjacency','halltype','trend'].forEach(id => renderPage(id));
 }
 
 // ── 日別島図 ──────────────────────────────
@@ -1593,10 +1638,181 @@ function renderTrendBody() {
       '</tr></thead><tbody>' + rows + '</tbody></table></div>';
 }
 
+// ── 傾向ドリフト（店のクセの週次推移）──────────────────────────────
+const DRIFT_METRICS = [
+  { key:'overallRate',       title:'全体高設定率',      sub:'店の強気度',                  color:'#e8ff47', mul:100, unit:'%', ref:null, thr:6 },
+  { key:'specialNormalDiff', title:'特定日−通常日の差',  sub:'メリハリ (pt)',               color:'#47c8ff', mul:100, unit:'pt', ref:0,   thr:8 },
+  { key:'cornerLift',        title:'角台の効き',         sub:'角台率÷非角台率 (1.0=差なし)', color:'#ff6b47', mul:1,   unit:'x', ref:1,   thr:0.3 },
+  { key:'suffixLift',        title:'末尾の効き',         sub:'最強末尾÷平均 (1.0=差なし)',   color:'#ffb347', mul:1,   unit:'x', ref:1,   thr:0.3 },
+  { key:'holdRate',          title:'据え置き率',         sub:'特定日高設定→翌日も高設定',    color:'#47ff8a', mul:100, unit:'%', ref:null, thr:10 },
+];
+const driftCharts = {};
+function driftNum(v){ if(v==null) return 0; const n=parseFloat(String(v).replace(/,/g,'')); return isNaN(n)?0:n; }
+function driftFmt(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function driftWeekStart(ds){ const d=parseLocalDate(ds); const wd=d.getDay(); d.setDate(d.getDate()+(wd===0?-6:1-wd)); return driftFmt(d); }
+function driftNextDay(ds){ const d=parseLocalDate(ds); d.setDate(d.getDate()+1); return driftFmt(d); }
+
+// 実データから週次5指標を計算（記述的。薄い週はnullで正直に沈黙）
+function computeWeeklyDrift(data){
+  const minRate=8, minSide=4, minHold=4;
+  const corners=getCornerMachines()||[];
+  const cornerSet={}; corners.forEach(c=>cornerSet[parseInt(c)]=true);
+  const rows=data.filter(r=>driftNum(r['総回転数'])>=100);
+  // 台×日マップ（据え置き判定）
+  const map={};
+  rows.forEach(r=>{ const m=parseInt(r['台番号']), d=String(r['日付']).substring(0,10); (map[m]=map[m]||{})[d]=r; });
+  // 週束ね
+  const weeks={};
+  rows.forEach(r=>{ const d=String(r['日付']).substring(0,10), w=driftWeekStart(d); (weeks[w]=weeks[w]||[]).push(r); });
+  return Object.keys(weeks).sort().map(w=>{
+    const wr=weeks[w], present=wr.length, high=wr.filter(r=>isHighSetting(r)).length;
+    // ①全体率
+    const overallRate = present>=minRate ? high/present : null;
+    // ③角台lift
+    const cRows=wr.filter(r=>cornerSet[parseInt(r['台番号'])]);
+    const nRows=wr.filter(r=>!cornerSet[parseInt(r['台番号'])]);
+    const cHigh=cRows.filter(r=>isHighSetting(r)).length, nHigh=nRows.filter(r=>isHighSetting(r)).length;
+    let cornerLift=null;
+    if(corners.length && cRows.length>=minSide && nRows.length>=minSide){
+      const cr=cHigh/cRows.length, nr=nHigh/nRows.length;
+      cornerLift = nr>0 ? cr/nr : null;
+    }
+    // ④末尾lift
+    let suffixLift=null;
+    if(nRows.length>=minRate){
+      const bySuf={};
+      nRows.forEach(r=>{ const s=parseInt(r['台番号'])%10; (bySuf[s]=bySuf[s]||{n:0,h:0}); bySuf[s].n++; if(isHighSetting(r)) bySuf[s].h++; });
+      const navg=nHigh/nRows.length; let best=null;
+      Object.keys(bySuf).forEach(s=>{ const o=bySuf[s]; if(o.n<minSide) return; const rate=o.h/o.n; if(best==null||rate>best) best=rate; });
+      if(best!=null && navg>0) suffixLift=best/navg;
+    }
+    // ⑤据え置き率
+    let holdPairs=0, holdHeld=0;
+    wr.forEach(r=>{
+      const d=String(r['日付']).substring(0,10);
+      if(!isSpecialDay(d) || !isHighSetting(r)) return;
+      const m=parseInt(r['台番号']); const nx=map[m] && map[m][driftNextDay(d)];
+      if(!nx) return; holdPairs++; if(isHighSetting(nx)) holdHeld++;
+    });
+    const holdRate = holdPairs>=minHold ? holdHeld/holdPairs : null;
+    // ②特定日−通常日差
+    const spRows=wr.filter(r=>isSpecialDay(String(r['日付']).substring(0,10)));
+    const noRows=wr.filter(r=>!isSpecialDay(String(r['日付']).substring(0,10)));
+    let specialNormalDiff=null;
+    if(spRows.length>=minSide && noRows.length>=minSide){
+      specialNormalDiff = spRows.filter(r=>isHighSetting(r)).length/spRows.length - noRows.filter(r=>isHighSetting(r)).length/noRows.length;
+    }
+    return { week:w, present, overallRate, cornerLift, suffixLift, holdRate, specialNormalDiff };
+  });
+}
+
+function driftSmooth(a){ return a.map((v,i)=>{ const w=[a[i-1],a[i],a[i+1]].filter(x=>x!=null); return w.length?w.reduce((s,x)=>s+x,0)/w.length:null; }); }
+function driftSeries(SER,k,mul){ return SER.map(r=>r[k]==null?null:r[k]*(mul||1)); }
+
+// 直近の動き（raw値で recent3 vs before3）
+function driftMovement(SER,m){
+  const arr=SER.map(r=>r[m.key]).filter(x=>x!=null);
+  if(arr.length<6) return {cls:'nd',txt:'データ不足'};
+  const avg=a=>a.reduce((s,x)=>s+x,0)/a.length;
+  const d=(avg(arr.slice(-3))-avg(arr.slice(-6,-3)))*m.mul;
+  const arrow=d>0?'↑':'↓', val=(d>0?'+':'')+d.toFixed(m.unit==='x'?2:0)+m.unit;
+  if(Math.abs(d)>=m.thr) return {cls:'move',txt:`直近 ${val} ${arrow} 動きあり`};
+  return {cls:'flat',txt:`直近 ${val} → 横ばい`};
+}
+
+// ピン（店ごとにlocalStorage保存）
+function driftPinKey(){ return 'drift_pins_'+sheetName; }
+function driftGetPins(){ try{ return new Set(JSON.parse(localStorage.getItem(driftPinKey())||'[]')); }catch(e){ return new Set(); } }
+function driftSetPins(set){ try{ localStorage.setItem(driftPinKey(), JSON.stringify([...set])); }catch(e){} }
+
+function driftCardHtml(SER,m,pins){
+  const mv=driftMovement(SER,m), on=pins.has(m.key)?'on':'';
+  return `<div class="drift-card ${pins.has(m.key)?'pinned':''}">
+    <div class="drift-mhead">
+      <div class="drift-mtitle">${m.title}<small>${m.sub}</small></div>
+      <button class="drift-pin-btn ${on}" data-k="${m.key}" title="上に固定">📌</button>
+    </div>
+    <span class="drift-chip ${mv.cls}">${mv.txt}</span>
+    <div class="drift-chart-wrap"><canvas id="drift_cv_${m.key}"></canvas></div>
+  </div>`;
+}
+
+function driftDrawChart(SER,m,labels){
+  const useSmooth=document.getElementById('drift-smooth').checked;
+  let d=driftSeries(SER,m.key,m.mul); if(useSmooth) d=driftSmooth(d);
+  const ds=[{ label:m.title, data:d, borderColor:m.color, backgroundColor:m.color+'22',
+    borderWidth:2.2, pointRadius:d.map(v=>v==null?0:3), pointBackgroundColor:m.color, tension:.25, spanGaps:false, fill:true }];
+  if(m.ref!=null) ds.push({ label:'ref', data:labels.map(()=>m.ref), borderColor:'#555', borderWidth:1, borderDash:[4,4], pointRadius:0, fill:false });
+  if(driftCharts[m.key]) driftCharts[m.key].destroy();
+  driftCharts[m.key]=new Chart(document.getElementById('drift_cv_'+m.key).getContext('2d'),{
+    type:'line', data:{labels,datasets:ds},
+    options:{ responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{display:false}, tooltip:{callbacks:{label:c=>c.parsed.y==null?'データ不足':(c.parsed.y.toFixed(m.unit==='x'?2:1)+m.unit)}} },
+      scales:{ x:{ticks:{color:'#666',font:{size:9},maxRotation:0,autoSkip:true,maxTicksLimit:8},grid:{color:'#1a1a1a'}},
+               y:{ticks:{color:'#666',font:{size:10},callback:v=>v+m.unit},grid:{color:'#1a1a1a'}} } }
+  });
+}
+
+function driftDiagnose(SER){
+  const valid=SER.filter(r=>r.overallRate!=null);
+  if(valid.length<6) return '💬 週次で傾向を判定するにはデータが不足しています（有効週が6週未満）。';
+  const avg=(a,k)=>a.reduce((s,x)=>s+x[k],0)/a.length;
+  const now=avg(valid.slice(-3),'overallRate'), bef=avg(valid.slice(-6,-3),'overallRate'), d=now-bef;
+  const diffValid=SER.filter(r=>r.specialNormalDiff!=null).slice(-3);
+  let msg = Math.abs(d)<0.06 ? `直近3週：全体の高設定率は<b>安定</b>（約${(now*100).toFixed(0)}%）。`
+    : `直近3週：全体の高設定率が${(bef*100).toFixed(0)}%→${(now*100).toFixed(0)}%へ<b>${d>0?'上昇':'低下'}</b>（傾向が変化した可能性）。`;
+  if(diffValid.length){
+    const diffNow=avg(diffValid,'specialNormalDiff')*100;
+    msg += ` 特定日−通常日の差は直近<b>${diffNow.toFixed(0)}pt</b>`;
+    msg += diffNow<8 ? '（＝メリハリがほぼ無い＝全台フラットに入れる傾向）。' : '（＝特定日にメリハリを付ける傾向）。';
+  }
+  return '💬 '+msg;
+}
+
+let driftSmoothBound=false;
+function renderDrift(){
+  if(!allData.length) return;
+  const SER=computeWeeklyDrift(allData);
+  const machineCount=[...new Set(allData.map(r=>parseInt(r['台番号'])))].length;
+  document.getElementById('drift-sub').textContent =
+    sheetName+'（'+machineCount+'台・'+SER.length+'週）の店のクセの推移。段差＝方針が変わった可能性を答え合わせしてください。';
+  document.getElementById('drift-diag').innerHTML = driftDiagnose(SER);
+
+  if(SER.length===0){
+    document.getElementById('drift-pinned-section').style.display='none';
+    document.getElementById('drift-unpinned-row').innerHTML='<div style="font-size:12px;color:var(--text3);padding:8px">データがありません。</div>';
+    return;
+  }
+  const labels=SER.map(r=>r.week.substring(5));
+
+  function paint(){
+    const pins=driftGetPins();
+    const pinned=DRIFT_METRICS.filter(m=>pins.has(m.key));
+    const others=DRIFT_METRICS.filter(m=>!pins.has(m.key));
+    document.getElementById('drift-pinned-section').style.display = pinned.length ? '' : 'none';
+    document.getElementById('drift-pinned-row').innerHTML = pinned.map(m=>driftCardHtml(SER,m,pins)).join('');
+    document.getElementById('drift-others-label').textContent = pinned.length ? 'その他の指標' : 'すべての指標';
+    document.getElementById('drift-unpinned-row').innerHTML = others.length
+      ? others.map(m=>driftCardHtml(SER,m,pins)).join('')
+      : '<div style="font-size:12px;color:var(--text3);padding:8px">（全指標をピン留め中）</div>';
+    DRIFT_METRICS.forEach(m=>driftDrawChart(SER,m,labels));
+    document.querySelectorAll('.drift-pin-btn').forEach(b=>b.onclick=()=>{
+      const k=b.dataset.k, pn=driftGetPins();
+      pn.has(k)?pn.delete(k):pn.add(k); driftSetPins(pn); paint();
+    });
+  }
+  paint();
+  if(!driftSmoothBound){
+    document.getElementById('drift-smooth').addEventListener('change', ()=>renderDrift());
+    driftSmoothBound=true;
+  }
+}
+
 
 
 function renderPage(id) {
   if (id==='target') renderTarget();
+  else if (id==='drift') renderDrift();
   else if (id==='machinetrend') renderMachineTrend();
   else if (id==='suffix') renderSuffix();
   else if (id==='daytype') renderDaytype();

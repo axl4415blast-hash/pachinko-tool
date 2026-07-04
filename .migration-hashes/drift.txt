@@ -1,0 +1,20 @@
+# Step6: 傾向ドリフト（drift）移植の抽出元ハッシュ
+# コピー元：analysis_グラン本店.html（114-133行目=CSS, 214-236行目=HTML, 1254-1422行目=関数）
+# driftは他の5機能と異なり専用CSSブロック（見出しコメント付き）を持つ唯一の機能。
+# 関数ブロックにはモジュール変数 let driftSmoothBound=false; （1385行）も含まれる
+# （renderDrift内で参照されるため）。表示・比較ロジック中心のStep（統計的深掘り不要）。
+# 2026-07-04 daitoyo-7features ブランチで大東洋本店へ挿入。
+[css]
+start_marker=/* ── 傾向ドリフト ── */
+lines=20
+sha256=c2739dabd6d479e68f961f6bb5866320f265b4cb3fb95379619f9daeeeed1165
+
+[html]
+start_marker=<!-- 傾向ドリフト -->
+lines=23
+sha256=1d1573489e6319a6d437e916d4195b316bfb1487999c2ab5fe5fd6293410f8c8
+
+[func]
+start_marker=// ── 傾向ドリフト（店のクセの週次推移）──────────────────────────────
+lines=169
+sha256=36a1edecbc357fe3e49044f655df092bb9e6a97150d12800df7faf1e5f55158f
