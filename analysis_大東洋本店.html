@@ -126,6 +126,7 @@ body { background: var(--bg); color: var(--text); font-family: 'Noto Sans JP', s
     <button class="nav-item" onclick="showPage('rotation',this)"><div class="nav-dot"></div>🔄 ローテーション分析</button>
     <button class="nav-item" onclick="showPage('adjacency',this)"><div class="nav-dot"></div>🧩 島の並び文脈</button>
     <button class="nav-item" onclick="showPage('halltype',this)"><div class="nav-dot"></div>🏷️ 店の型判定</button>
+    <button class="nav-item" onclick="showPage('trend',this)"><div class="nav-dot"></div>📈 直近トレンド×前回同種日</button>
     <button class="nav-item" onclick="showPage('spec',this)"><div class="nav-dot"></div>🎯 解析値マッチ</button>
     <button class="nav-item" onclick="showPage('audit',this)"><div class="nav-dot"></div>🔬 予兆発見監査</button>
     <button class="nav-item" onclick="showPage('heatmap',this)"><div class="nav-dot"></div>曜日×台番号ヒートマップ</button>
@@ -351,6 +352,26 @@ body { background: var(--bg); color: var(--text); font-family: 'Noto Sans JP', s
       <div class="card-title">🎯 単品度：バラして少数だけ入れる店か</div>
       <div style="font-size:11px;color:var(--text2);margin-bottom:10px">角度も末尾度も弱く、1日あたりの高設定台数も少ないなら単品系（バラ）。</div>
       <div id="halltype-single"></div>
+    </div>
+  </div>
+
+  <!-- 直近トレンド×前回同種日 -->
+  <div class="page" id="page-trend">
+    <div class="page-header">
+      <div class="page-title">📈 直近トレンド×<span>前回同種日</span></div>
+      <div class="page-sub">「前回もアツい/最近アツい/最近ボロ負け」の3つの予兆が、実際に高設定を当てたかを過去データで答え合わせし、本物の予兆だけで次の狙い目台を出します（基準：特定日 → 次の特定日）</div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">① 予兆の答え合わせ（バックテスト）</div>
+      <div style="font-size:11px;color:var(--text2);margin-bottom:12px">過去の対象日を1日ずつ振り返り、各予兆に当てはまった台が実際に高設定だったかを集計。倍率（lift）が高く統計的に有意な予兆だけが「本物」です。</div>
+      <div id="trend-backtest"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">② 次の対象日の狙い目候補</div>
+      <div style="font-size:11px;color:var(--text2);margin-bottom:12px">答え合わせで「本物」と判定された予兆に、最新データ時点で当てはまる台を候補として表示します。</div>
+      <div id="trend-picks"></div>
     </div>
   </div>
 
@@ -862,7 +883,7 @@ function setLoadStatus(msg, type) {
   el.style.color = type==='error'?'var(--error)':type==='success'?'var(--success)':'var(--text2)';
 }
 function renderAllPages() {
-  ['target','overview','suffix','daytype','correlation','interval','zone','heatmap','machinetrend','daymap','rotation','adjacency','halltype'].forEach(id => renderPage(id));
+  ['target','overview','suffix','daytype','correlation','interval','zone','heatmap','machinetrend','daymap','rotation','adjacency','halltype','trend'].forEach(id => renderPage(id));
 }
 
 // ── 日別島図 ──────────────────────────────
@@ -1413,6 +1434,165 @@ function renderHalltype() {
     '<div style="font-size:13px;color:var(--text);line-height:1.7;margin-top:8px">' + singleMsg + '</div>';
 }
 
+// ── 直近トレンド×前回同種日（予測）──────────────────
+function parseDiffVal(v){ return parseFloat(String(v==null?'':v).replace(/,/g,'')) || 0; }
+
+function renderTrend() {
+  if (!allData.length) return;
+  renderTrendBody();
+}
+
+function renderTrendBody() {
+  const CORNER_MACHINES = getCornerMachines();
+
+  const allDates = [...new Set(allData.map(r=>String(r['日付']).substring(0,10)))].sort();
+  const machines = [...new Set(allData.map(r=>parseInt(r['台番号'])))].sort((a,b)=>a-b);
+
+  // 台→日→{high, diff}
+  const md = {};
+  allData.forEach(r=>{
+    const m = parseInt(r['台番号']); const d = String(r['日付']).substring(0,10);
+    if(!md[m]) md[m]={};
+    md[m][d] = { high: isHighSetting(r), diff: parseDiffVal(r['差枚']) };
+  });
+
+  const targetDates = allDates.filter(d => isSpecialDay(d));
+  const basisLabel = '特定日';
+
+  if (targetDates.length < 2) {
+    document.getElementById('trend-backtest').innerHTML = '<div style="color:var(--text2);font-size:13px;padding:8px">' + basisLabel + 'が2回分そろっていないため、答え合わせができません。</div>';
+    document.getElementById('trend-picks').innerHTML = '';
+    return;
+  }
+
+  // ヘルパ：対象日の直前3カレンダー日 / 前回同種日 / その日のワースト30%差枚
+  const prior3 = d => allDates.filter(x=>x<d).slice(-3);
+  const prevTarget = d => { const i = targetDates.indexOf(d); return i>0 ? targetDates[i-1] : null; };
+  function worst30(p3) {
+    if (!p3.length) return new Set();
+    const sums = machines.map(m=>{
+      let sum=0,has=false;
+      p3.forEach(pd=>{ if(md[m]?.[pd]){ sum+=md[m][pd].diff; has=true; } });
+      return {m,sum,has};
+    }).filter(x=>x.has);
+    sums.sort((a,b)=>a.sum-b.sum); // マイナス大きい順
+    const cut = Math.max(1, Math.floor(sums.length*0.3));
+    return new Set(sums.slice(0,cut).map(x=>x.m));
+  }
+
+  // ── バックテスト集計 ──
+  const S = { S1:{fh:0,fn:0,nh:0,nn:0}, S2:{fh:0,fn:0,nh:0,nn:0}, S3:{fh:0,fn:0,nh:0,nn:0} };
+  targetDates.forEach(d=>{
+    const p3 = prior3(d);
+    const pt = prevTarget(d);
+    const worstSet = worst30(p3);
+    machines.forEach(m=>{
+      const cur = md[m]?.[d];
+      if(!cur) return;
+      const hi = cur.high;
+      if(pt){ const f = !!(md[m]?.[pt]?.high); if(f){S.S1.fn++; if(hi)S.S1.fh++;} else {S.S1.nn++; if(hi)S.S1.nh++;} }
+      if(p3.length){ const f = p3.some(pd=>md[m]?.[pd]?.high); if(f){S.S2.fn++; if(hi)S.S2.fh++;} else {S.S2.nn++; if(hi)S.S2.nh++;} }
+      if(worstSet.size){ const f = worstSet.has(m); if(f){S.S3.fn++; if(hi)S.S3.fh++;} else {S.S3.nn++; if(hi)S.S3.nh++;} }
+    });
+  });
+
+  function metric(s){
+    const fRate = s.fn>0 ? s.fh/s.fn : 0;
+    const nRate = s.nn>0 ? s.nh/s.nn : 0;
+    const lift = nRate>0 ? fRate/nRate : (fRate>0?Infinity:0);
+    let z=0;
+    if(s.fn>0 && s.nn>0){
+      const pPool=(s.fh+s.nh)/(s.fn+s.nn);
+      const se=Math.sqrt(pPool*(1-pPool)*(1/s.fn+1/s.nn));
+      z = se>0 ? (fRate-nRate)/se : 0;
+    }
+    const enough = s.fn>=10 && s.nn>=10;
+    const significant = enough && z>=1.96;
+    return {fRate,nRate,lift,z,fn:s.fn,nn:s.nn,fh:s.fh,nh:s.nh,enough,significant};
+  }
+  const M = { S1:metric(S.S1), S2:metric(S.S2), S3:metric(S.S3) };
+
+  const sigInfo = {
+    S1:{name:'S1 前回もアツい',  desc:'前回の'+basisLabel+'に高設定だった台'},
+    S2:{name:'S2 最近アツい',    desc:'直近3日で1回でも高設定だった台'},
+    S3:{name:'S3 最近ボロ負け',  desc:'直近3日の差枚が機種内ワースト30%の台'},
+  };
+
+  // ── バックテスト描画 ──
+  let cards = '';
+  ['S1','S2','S3'].forEach(k=>{
+    const m = M[k];
+    let verdict, vc;
+    if(!m.enough){ verdict='データ不足'; vc='var(--text2)'; }
+    else if(m.significant && m.lift>=1.2){ verdict='本物の予兆 ✓'; vc='#47ff8a'; }
+    else if(m.significant && m.lift<=0.8){ verdict='逆効果（むしろ避ける）'; vc='#47c8ff'; }
+    else { verdict='効果なし（思い込み）'; vc='var(--text2)'; }
+    const liftStr = m.lift===Infinity?'∞':m.lift.toFixed(2);
+    cards +=
+      '<div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:14px;margin-bottom:10px">' +
+        '<div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px;margin-bottom:6px">' +
+          '<div style="font-size:14px;font-weight:700;color:var(--text)">' + sigInfo[k].name + '</div>' +
+          '<div style="font-size:13px;font-weight:700;color:' + vc + '">' + verdict + '</div>' +
+        '</div>' +
+        '<div style="font-size:11px;color:var(--text2);margin-bottom:8px">' + sigInfo[k].desc + '</div>' +
+        '<div style="display:flex;gap:16px;flex-wrap:wrap;font-size:12px">' +
+          '<div><span style="color:var(--text2)">該当台の高設定率 </span><b style="color:var(--text);font-family:monospace,monospace">' + (m.fRate*100).toFixed(1) + '%</b> <span style="color:var(--text2)">(' + m.fh + '/' + m.fn + ')</span></div>' +
+          '<div><span style="color:var(--text2)">非該当 </span><b style="color:var(--text);font-family:monospace,monospace">' + (m.nRate*100).toFixed(1) + '%</b> <span style="color:var(--text2)">(' + m.nh + '/' + m.nn + ')</span></div>' +
+          '<div><span style="color:var(--text2)">倍率 </span><b style="color:' + vc + ';font-family:monospace,monospace">' + liftStr + '倍</b> <span style="color:var(--text2)">(z=' + m.z.toFixed(1) + ')</span></div>' +
+        '</div>' +
+      '</div>';
+  });
+  document.getElementById('trend-backtest').innerHTML = cards +
+    '<div style="font-size:11px;color:var(--text2);margin-top:4px;line-height:1.6">※ 倍率＝該当台の高設定率÷非該当の高設定率。1.2倍以上かつ統計的に有意（z≥1.96）で「本物」と判定。サンプル不足や偶然の範囲は採用しません。</div>';
+
+  // ── 次の対象日の狙い目候補 ──
+  const lastTarget = targetDates[targetDates.length-1];
+  const p3now = allDates.slice(-3);
+  const worstNow = worst30(p3now);
+  const validSignals = ['S1','S2','S3'].filter(k => M[k].significant && M[k].lift>=1.2);
+
+  if (validSignals.length === 0) {
+    document.getElementById('trend-picks').innerHTML =
+      '<div style="color:var(--text2);font-size:13px;padding:8px;line-height:1.7">答え合わせで「本物」と判定できた予兆がありませんでした。この基準（' + basisLabel + '）では、3つの予兆はいずれも次の狙い目を信頼できるほど当てていません。データが増えると変わる可能性があります。</div>';
+    return;
+  }
+
+  const picks = [];
+  machines.forEach(m=>{
+    const hits = [];
+    if(validSignals.includes('S1') && md[m]?.[lastTarget]?.high) hits.push('S1');
+    if(validSignals.includes('S2') && p3now.some(pd=>md[m]?.[pd]?.high)) hits.push('S2');
+    if(validSignals.includes('S3') && worstNow.has(m)) hits.push('S3');
+    if(hits.length) picks.push({m, hits});
+  });
+  picks.sort((a,b)=> b.hits.length-a.hits.length || a.m-b.m);
+
+  if (picks.length === 0) {
+    document.getElementById('trend-picks').innerHTML =
+      '<div style="color:var(--text2);font-size:13px;padding:8px">本物の予兆に当てはまる台が現時点でありません。</div>';
+    return;
+  }
+
+  const sigBadge = { S1:'#47ff8a', S2:'#e8ff47', S3:'#47c8ff' };
+  const rows = picks.map(p=>{
+    const corner = CORNER_MACHINES.includes(p.m);
+    const badges = p.hits.map(h=>'<span style="display:inline-block;background:rgba(255,255,255,0.06);border:1px solid '+sigBadge[h]+';color:'+sigBadge[h]+';border-radius:4px;padding:1px 6px;margin:1px;font-size:11px">'+sigInfo[h].name+'</span>').join('');
+    return '<tr style="border-bottom:1px solid var(--border)">' +
+      '<td style="padding:8px 10px;font-family:monospace,monospace;font-size:14px;font-weight:700;color:var(--text);white-space:nowrap">' + p.m + (corner?'<span style="color:var(--accent3);font-size:9px"> 角</span>':'') + '</td>' +
+      '<td style="padding:8px 10px;text-align:center;font-family:monospace,monospace;font-weight:700;color:var(--accent2)">' + p.hits.length + '</td>' +
+      '<td style="padding:8px 10px">' + badges + '</td>' +
+    '</tr>';
+  }).join('');
+  document.getElementById('trend-picks').innerHTML =
+    '<div style="font-size:11px;color:var(--text2);margin-bottom:8px">最新の' + basisLabel + '（' + lastTarget + '）と直近3日を起点に判定。該当予兆が多い台ほど上位です。</div>' +
+    '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse">' +
+      '<thead><tr style="border-bottom:2px solid var(--border)">' +
+        '<th style="padding:8px 10px;text-align:left;font-size:11px;color:var(--text2)">台番号</th>' +
+        '<th style="padding:8px 10px;text-align:center;font-size:11px;color:var(--text2)">該当数</th>' +
+        '<th style="padding:8px 10px;text-align:left;font-size:11px;color:var(--text2)">当てはまった本物の予兆</th>' +
+      '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+}
+
 
 
 function renderPage(id) {
@@ -1425,6 +1605,7 @@ function renderPage(id) {
   else if (id==='rotation') renderRotation();
   else if (id==='adjacency') renderAdjacency();
   else if (id==='halltype') renderHalltype();
+  else if (id==='trend') renderTrend();
   else if (id==='spec') renderSpec();
   else if (id==='audit') renderAudit();
   else if (id==='heatmap') renderHeatmap();
