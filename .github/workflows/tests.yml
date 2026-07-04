@@ -31,6 +31,9 @@ jobs:
       - name: 移植ハッシュ照合（.migration-hashes/*.txt）
         run: node .claude/hooks/check-migration-hashes.js
 
+      - name: 関数名の重複検出（グローバル無言上書きガード）
+        run: node .claude/hooks/check-function-duplicates.js
+
       # --- 重い計算（分析コアの単体テスト群）---
       - name: PredictionEngine2 品質ゲート（合成データ）
         run: node tests/fixtures/synthetic-data-generator.js

@@ -70,10 +70,16 @@ if ! node "$SCRIPT_DIR/check-migration-hashes.js"; then
   FAIL=1
 fi
 
+# 6) 関数名の重複（グローバルスコープでの無言上書き）検出
+if ! node "$SCRIPT_DIR/check-function-duplicates.js"; then
+  echo "run-quality-checks: 大東洋にグラン超過のfunction重複 — commit blocked。" >&2
+  FAIL=1
+fi
+
 if [ "$FAIL" -ne 0 ]; then
   echo "run-quality-checks: FAILED — commit blocked. 上のエラーを直して再実行してください。" >&2
   exit 2
 fi
 
-echo "run-quality-checks: 構文OK / div balance OK / コア一致OK / 未定義参照なし / 移植ハッシュOK。" >&2
+echo "run-quality-checks: 構文OK / div balance OK / コア一致OK / 未定義参照なし / 移植ハッシュOK / 関数重複なし。" >&2
 exit 0
