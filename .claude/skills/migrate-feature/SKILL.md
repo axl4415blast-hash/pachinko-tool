@@ -58,6 +58,7 @@ description: グラン本店の機能を大東洋本店へ移植する際の標�
 
 ## 6. 合成データ検証
 
+- **統計処理を含むStep（halltype・carryover）に着手する際は、作業開始前に必ず使用モデルがOpusであることを確認する。**（git commit/pushの権限モード確認は、`.claude/settings.json`の`permissions.ask`ルールで機構的に担保されたため、このチェックリストからは削除した。）
 - 仕込んだシグナルと非仕込みとで、スコア・判定が明確に分離することを確認する。**例外が出ないだけでは合格にしない**。
 - `$ARGUMENTS`がStep4（halltype）の場合：Bonferroni補正の効果を、補正なし版と比較して確認する。
 - `$ARGUMENTS`がStep7（carryover）の場合：Mantel-Haenszel正規化と層別集計の効果を確認する。

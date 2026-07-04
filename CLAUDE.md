@@ -99,6 +99,14 @@
 - [ ] **GitHub Pagesのデプロイが「building」で5分以上停滞したら異常とみなす**：[githubstatus.com](https://www.githubstatus.com/)でGitHub側の障害有無を確認し、`POST /repos/{owner}/{repo}/actions/runs/{run_id}/rerun-failed-jobs`で該当ワークフローの失敗ジョブを再実行する。
 - [ ] **Claude CodeのPreToolUseフック（`.claude/settings.json`）は「発火しないことがある」既知の不具合パターンがある**（2026-07-03判明。GitHub issue #6305, #11544 等で報告されている現象と一致）。実際にこのセッションでBashツール経由の`git commit`が2回連続でブロックされず、デバッグマーカーで検証した結果、`git commit`に限らずあらゆるBashツール呼び出しに対してフックが一切発火しないことを確認した。**確実な砦は`.git/hooks/pre-commit`（git本体のネイティブフック。core.hooksPath未設定ならデフォルトの`.git/hooks/pre-commit`が常に呼ばれる）である。** 実チェックロジックは`.claude/hooks/run-quality-checks.sh`に一本化されており、`.claude/hooks/pre-commit-check.sh`（PreToolUse用の薄いラッパー）と`.git/hooks/pre-commit`（git本体用の薄いラッパー）の両方がこれを呼ぶ。PreToolUse側の定義は「効くこともある二重の安全網」という位置づけで残してあるが、**`.git/hooks/pre-commit`はgit管理外（`.git/`配下）のためリポジトリを再clone/新規worktreeした場合は手動で再作成が必要**（内容は`.claude/hooks/run-quality-checks.sh`を呼ぶ数行のラッパーのみ）。過去の「コア四機能移植」コミット履歴を調査したが、フックが実際に発火していたことを示す直接証拠（ブロック→修正→再コミットのパターン等）はreflog上に見つからなかった（ただし拒否されたコミットはgit履歴に残らないため、この不在は「発火していた」「発火していなかった」のどちらの証明にもならない）。
 
+## 既知の環境依存の罠
+
+「想定通りに動かなかった」事象を時系列で一覧化する。詳細な記述は各所（プレイブック等）に残したまま、ここには「何が起きたか」と「教訓」だけを1〜2行で要約する。**新しい事象が見つかるたびにここへ追記する運用とする。**
+
+1. **CRLFハッシュ計算方式の不一致（daymap／2026-07-04）**：`.migration-hashes/`に記録したsha256を生CRLFで計算したが、照合スクリプトはLF正規化後で計算していたため、コードは正しいのに常に不一致になった。→ **教訓：ハッシュを記録する全スクリプトで正規化方式を統一すること。**
+2. **Claude Code PreToolUseフックが特定セッションで発火しない（2026-07-03）**：正しく設定してもBashツールに対してフックが一切発火しないセッションがある（GitHub issue #6305, #11544 と一致）。→ **教訓：Claude Code自体の安全機構は、git本体（`.git/hooks/pre-commit`）やCI等の独立した仕組みで必ず二重化すること。Claude Code内部の仕組みだけを信頼しない。**
+3. **settings.json変更のセッション内反映タイミング不確定（2026-07-04・調査中）**：`permissions.ask`ルールを追加したが、変更したセッション内で即時反映されるか、起動時読み込みのみかが未確定。→ **教訓：設定ファイルを変更したら、新しいセッションで再起動して効果を確認する習慣を持つこと。**
+
 ## 進め方のルール（Claude Code移行後も継続）
 
 - 1機能ずつ実装→合成データ検証→実データ統合→ブラストがPC Chromeで実機確認、の順を守る。
