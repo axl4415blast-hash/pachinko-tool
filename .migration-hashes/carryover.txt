@@ -6,6 +6,13 @@
 # carryoverNextDay/ReachesTier/NeighborsOfヘルパー＋computeCarryover(DI計算コア)＋renderCarryover。
 # 専用CSSは無し（driftの.diag-bannerを流用）。7機能で最複雑（MH層別検定）。
 # 2026-07-04 daitoyo-7features ブランチで大東洋本店へ挿入。
+#
+# 【funcブロックは大東洋固有の意図的逸脱あり（2026-07-05）】carryoverReachesTierの
+# フォールバックを rotation>0 → rotation>=100 に変更（大東洋のcriteriaはtiersを持たず
+# 常にこの枝を通るため、判定不可フィルタが緩すぎる問題への対処）。この変更でfuncブロックは
+# グラン本店とバイト同一ではなくなった（コメント4行追加＋1行変更で345→349行）。
+# 記録sha256は変更後の大東洋の状態を守る値に更新済み。グラン本店側は tiers 枝を通るため
+# 影響を受けない。
 [html]
 start_marker=<!-- ⑤ 特定日翌日 据え置き＋ズラし分析 -->
 lines=78
@@ -13,5 +20,5 @@ sha256=5522fa10d5b416ad23b338666427f0c2c3d0caa7332db68d246e185b5616e1b9
 
 [func]
 start_marker=// ── ⑤ 特定日翌日 据え置き＋ズラし分析 ──────────────────────
-lines=345
-sha256=cf147c188119efe9c554aa567842ddef090849a3bf633d4573a4cdccec912692
+lines=349
+sha256=4e8ff3aaf162dad5ce1975aaca27caaeb8ce1bab734b1d00743a1232f71b85ef

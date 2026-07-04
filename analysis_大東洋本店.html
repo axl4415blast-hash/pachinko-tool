@@ -1898,7 +1898,11 @@ function carryoverReachesTier(row) {
   // isHighSetting と同じ基準解決（現在シートの criteria）で「最低段階の回転数に届くか」を判定
   const rotation = parseFloat(row['総回転数']) || 0;
   const tiers = (criteria && criteria.tiers) ? criteria.tiers : [];
-  if (!tiers.length) return rotation > 0;
+  // 大東洋固有：criteria は tiers を持たないフラット構造のため、ここは常にこの枝を通る。
+  // rotation>0（＝ゼロ稼働のみ除外）は判定不可フィルタとして緩すぎるため、rotation>=100
+  // （＝実質稼働していない薄い翌日を判定不可として除外）に引き上げる。グラン本店は tiers を
+  // 持つため minRot 枝を通り、この改変の影響を受けない（大東洋固有の意図的逸脱）。
+  if (!tiers.length) return rotation >= 100;
   const minRot = Math.min.apply(null, tiers.map(t => t.rotation));
   return rotation >= minRot;
 }
