@@ -1,0 +1,17 @@
+# Step7: 特定日翌日の据え置き（carryover）移植の抽出元ハッシュ
+# コピー元：analysis_グラン本店.html（465-542行目=HTML, 1866-2210行目=関数）
+# 関数ブロックは見出しコメント「// ── ⑤ 特定日翌日 据え置き＋ズラし分析 ──」から開始。
+# その2行前に別機能(target)の残存コメント「// ── 明日の狙い目台（新：予測エンジン版...）──」が
+# あるが、これは含めない（誤って含めると別機能を巻き込む）。
+# carryoverNextDay/ReachesTier/NeighborsOfヘルパー＋computeCarryover(DI計算コア)＋renderCarryover。
+# 専用CSSは無し（driftの.diag-bannerを流用）。7機能で最複雑（MH層別検定）。
+# 2026-07-04 daitoyo-7features ブランチで大東洋本店へ挿入。
+[html]
+start_marker=<!-- ⑤ 特定日翌日 据え置き＋ズラし分析 -->
+lines=78
+sha256=5522fa10d5b416ad23b338666427f0c2c3d0caa7332db68d246e185b5616e1b9
+
+[func]
+start_marker=// ── ⑤ 特定日翌日 据え置き＋ズラし分析 ──────────────────────
+lines=345
+sha256=cf147c188119efe9c554aa567842ddef090849a3bf633d4573a4cdccec912692

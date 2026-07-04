@@ -148,6 +148,7 @@ body { background: var(--bg); color: var(--text); font-family: 'Noto Sans JP', s
     <button class="nav-item" onclick="showPage('adjacency',this)"><div class="nav-dot"></div>🧩 島の並び文脈</button>
     <button class="nav-item" onclick="showPage('halltype',this)"><div class="nav-dot"></div>🏷️ 店の型判定</button>
     <button class="nav-item" onclick="showPage('trend',this)"><div class="nav-dot"></div>📈 直近トレンド×前回同種日</button>
+    <button class="nav-item" onclick="showPage('carryover',this)"><div class="nav-dot"></div>🔁 特定日翌日の据え置き</button>
     <button class="nav-item" onclick="showPage('spec',this)"><div class="nav-dot"></div>🎯 解析値マッチ</button>
     <button class="nav-item" onclick="showPage('audit',this)"><div class="nav-dot"></div>🔬 予兆発見監査</button>
     <button class="nav-item" onclick="showPage('heatmap',this)"><div class="nav-dot"></div>曜日×台番号ヒートマップ</button>
@@ -417,6 +418,85 @@ body { background: var(--bg); color: var(--text); font-family: 'Noto Sans JP', s
       <div class="card-title">② 次の対象日の狙い目候補</div>
       <div style="font-size:11px;color:var(--text2);margin-bottom:12px">答え合わせで「本物」と判定された予兆に、最新データ時点で当てはまる台を候補として表示します。</div>
       <div id="trend-picks"></div>
+    </div>
+  </div>
+
+  <!-- ⑤ 特定日翌日 据え置き＋ズラし分析 -->
+  <div class="page" id="page-carryover">
+    <div class="page-header">
+      <div class="page-title">🔁 特定日翌日の<span>据え置き</span>＋ズラし</div>
+      <div class="page-sub">特定日に高設定だった台が、翌日（＝通常日）も据え置かれるか。外れた時は隣にズレるか。専業の「翌日据え置き狙い」をデータで検証します。</div>
+    </div>
+    <div class="diag-banner" id="carryover-diag"></div>
+    <div id="carryover-body"></div>
+  </div>
+
+  <!-- Heatmap（曜日×台番号ヒートマップ）-->
+  <div class="page" id="page-heatmap">
+    <div class="page-header">
+      <div class="page-title">曜日×台番号<span>ヒートマップ</span></div>
+      <div class="page-sub">曜日と台番号の組み合わせで高設定率を可視化</div>
+    </div>
+    <div class="filter-bar">
+      <select class="filter-select" id="heatmap-filter-daytype">
+        <option value="all">全日付</option>
+        <option value="special">特定日のみ</option>
+        <option value="normal">通常日のみ</option>
+      </select>
+    </div>
+    <div class="card">
+      <div class="card-title">見方：色が濃いほど高設定率が高い　●=高設定あり　数字=高設定回数/稼働日数</div>
+      <div style="overflow-x:auto">
+        <div id="heatmap-table"></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">台番号別 詳細データ</div>
+      <div style="overflow-x:auto">
+        <table class="data-table" id="table-machine">
+          <thead><tr><th>台番号</th><th>角台</th><th>稼働日数</th><th>高設定回数</th><th>高設定率</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="page" id="page-machinetrend">
+    <div class="page-header">
+      <div class="page-title">📊 機種<span>差枚分析</span></div>
+      <div class="page-sub" id="machinetrend-sub">機種全体の差枚・高設定率の推移を区分別に分析します</div>
+    </div>
+    <!-- タブ -->
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:1rem">
+      <button class="mt-tab active" data-tab="all" onclick="switchMtTab(this)">全体（通常日+特定日）</button>
+      <button class="mt-tab" data-tab="normal" onclick="switchMtTab(this)">通常日</button>
+      <button class="mt-tab" data-tab="suffix1" onclick="switchMtTab(this)">末尾1（1・11・21日）</button>
+      <button class="mt-tab" data-tab="suffix3" onclick="switchMtTab(this)">末尾3（3・13・23日）</button>
+      <button class="mt-tab" data-tab="suffix9" onclick="switchMtTab(this)">末尾9（9・19・29日）</button>
+      <button class="mt-tab" data-tab="day27" onclick="switchMtTab(this)">27日</button>
+      <button class="mt-tab" data-tab="change" onclick="switchMtTab(this)">変化検知（直近10日 vs 前25日）</button>
+    </div>
+
+    <!-- グラフ -->
+    <div class="card" id="mt-chart-card">
+      <div class="card-title" id="mt-chart-title">差枚合計・平均差枚・高設定率の推移</div>
+      <div style="position:relative;height:280px"><canvas id="chart-mt-diff"></canvas></div>
+      <div style="position:relative;height:180px;margin-top:12px"><canvas id="chart-mt-rate"></canvas></div>
+    </div>
+    <!-- 変化検知パネル -->
+    <div class="card" id="mt-change-card" style="display:none">
+      <div class="card-title">通常日：直近10日 vs その前25日 平均比較</div>
+      <div id="mt-change-content"></div>
+    </div>
+    <!-- 表 -->
+    <div class="card" id="mt-table-card">
+      <div class="card-title" id="mt-table-title">日別データ一覧</div>
+      <div style="overflow-x:auto">
+        <table class="data-table" id="table-mt">
+          <thead><tr><th>日付</th><th>曜日</th><th>差枚合計</th><th>平均差枚</th><th>高設定台数</th><th>総台数</th><th>高設定率</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
     </div>
   </div>
 
@@ -928,7 +1008,7 @@ function setLoadStatus(msg, type) {
   el.style.color = type==='error'?'var(--error)':type==='success'?'var(--success)':'var(--text2)';
 }
 function renderAllPages() {
-  ['target','drift','overview','suffix','daytype','correlation','interval','zone','heatmap','machinetrend','daymap','rotation','adjacency','halltype','trend'].forEach(id => renderPage(id));
+  ['target','drift','overview','suffix','daytype','correlation','interval','zone','heatmap','machinetrend','daymap','rotation','adjacency','halltype','trend','carryover'].forEach(id => renderPage(id));
 }
 
 // ── 日別島図 ──────────────────────────────
@@ -1808,6 +1888,352 @@ function renderDrift(){
   }
 }
 
+// ── ⑤ 特定日翌日 据え置き＋ズラし分析 ──────────────────────
+// 計算コアは carryover_core.js（モジュール版）とバイト一致。deps配線のみアプリ用。
+function carryoverNextDay(ds) {
+  const d = parseLocalDate(ds); d.setDate(d.getDate() + 1);
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+function carryoverReachesTier(row) {
+  // isHighSetting と同じ基準解決（現在シートの criteria）で「最低段階の回転数に届くか」を判定
+  const rotation = parseFloat(row['総回転数']) || 0;
+  const tiers = (criteria && criteria.tiers) ? criteria.tiers : [];
+  if (!tiers.length) return rotation > 0;
+  const minRot = Math.min.apply(null, tiers.map(t => t.rotation));
+  return rotation >= minRot;
+}
+function carryoverNeighborsOf(no) {
+  // 島の並び（getZones の machines 配列）上で前後の台番号
+  const zones = getZones();
+  for (const z of zones) {
+    const i = z.machines.indexOf(parseInt(no));
+    if (i < 0) continue;
+    const r = [];
+    if (i > 0) r.push(z.machines[i - 1]);
+    if (i < z.machines.length - 1) r.push(z.machines[i + 1]);
+    return r;
+  }
+  return [];
+}
+
+  function computeCarryover(data, deps, opts) {
+    const {
+      isHigh, reachesTier, isSpecial, nextDate, diffOf, machineNo, neighborsOf
+    } = deps;
+    const o = opts || {};
+    const MIN_PAIRS = o.minPairs != null ? o.minPairs : 4;   // 有効な特定日→翌日ペア（層）の最低数
+    const MIN_DETERMINED = o.minDetermined != null ? o.minDetermined : 8; // 判定できた台の最低数
+    const MIN_TIER = o.minTier != null ? o.minTier : 4;      // 差枚各層の最低サンプル
+
+    // 日付→(台番号→row) の索引
+    const byDate = {};
+    data.forEach(r => {
+      const ds = String(r['日付']).substring(0, 10);
+      (byDate[ds] || (byDate[ds] = {}))[machineNo(r)] = r;
+    });
+    const dates = Object.keys(byDate).sort();
+    const dateSet = new Set(dates);
+
+    // 翌日ごとの全体状況（MH層）を先に算出（active＝翌日に判定土俵へ乗った台）
+    function dayOverall(ds) {
+      const rows = Object.values(byDate[ds]);
+      let N = 0, hi = 0;
+      rows.forEach(r => {
+        if (reachesTier(r)) { N++; if (isHigh(r)) hi++; }
+      });
+      return { N, hi };
+    }
+
+    // 特定日→翌日ペアを収集
+    const records = [];   // {date, machine, diff, status:'carried'|'notcarried'|'undetermined'}
+    const strata = [];    // MH層： {nd, N, hi, n1, a}
+    let usedSpecialDays = 0;
+
+    dates.forEach(ds => {
+      if (!isSpecial(ds)) return;
+      const nd = nextDate(ds);
+      if (!dateSet.has(nd)) return;          // 翌日データが無い特定日はスキップ
+      usedSpecialDays++;
+
+      const ov = dayOverall(nd);             // 翌日全体（層）
+      const todays = byDate[ds];
+      const highMachines = Object.keys(todays)
+        .map(k => parseInt(k))
+        .filter(no => isHigh(todays[no]));
+
+      let n1 = 0, a = 0;
+      highMachines.forEach(no => {
+        const dRow = todays[no];
+        const nRow = byDate[nd][no];
+        const diff = diffOf(dRow);
+        if (!nRow || !reachesTier(nRow)) {
+          records.push({ date: ds, machine: no, diff, status: 'undetermined' });
+          return;
+        }
+        const carried = isHigh(nRow);
+        n1++; if (carried) a++;
+        records.push({ date: ds, machine: no, diff, status: carried ? 'carried' : 'notcarried', nd });
+      });
+
+      if (ov.N >= 2 && ov.hi >= 1 && n1 >= 1) {
+        strata.push({ nd, N: ov.N, hi: ov.hi, n1, a });
+      }
+    });
+
+    const carriedRecs = records.filter(r => r.status === 'carried');
+    const notCarriedRecs = records.filter(r => r.status === 'notcarried');
+    const undetermined = records.filter(r => r.status === 'undetermined').length;
+    const determined = carriedRecs.length + notCarriedRecs.length;
+
+    // データ不足チェック
+    const insufficient = (strata.length < MIN_PAIRS) || (determined < MIN_DETERMINED);
+
+    // 据え置き率
+    const carryoverRate = determined > 0 ? carriedRecs.length / determined : null;
+
+    // MH層別：ΣA, ΣE, ΣV
+    let sumA = 0, sumE = 0, sumV = 0, sumHi = 0, sumN = 0;
+    strata.forEach(s => {
+      const n0 = s.N - s.n1;
+      sumA += s.a;
+      sumE += s.n1 * s.hi / s.N;
+      sumV += (s.n1 * n0 * s.hi * (s.N - s.hi)) / (s.N * s.N * (s.N - 1));
+      sumHi += s.hi; sumN += s.N;
+    });
+    const baseline = sumN > 0 ? sumHi / sumN : null;          // 翌日全体高設定率（層加重）
+    const lift = sumE > 0 ? sumA / sumE : null;               // 据え置き率÷期待
+    const z = sumV > 0 ? (sumA - sumE) / Math.sqrt(sumV) : null;
+    const significant = (z != null && lift != null && lift > 1 && z >= 1.96);
+
+    // 差枚3分割（判定できた台のみ・差枚降順で3等分）
+    const detRecs = records.filter(r => r.status === 'carried' || r.status === 'notcarried')
+      .slice().sort((x, y) => y.diff - x.diff);
+    const tiers = [];
+    if (detRecs.length >= 3) {
+      const size = Math.floor(detRecs.length / 3);
+      const rem = detRecs.length - size * 3;
+      // 上位・中位・下位に配分（余りは上位から）
+      const bounds = [
+        [0, size + (rem > 0 ? 1 : 0)],
+      ];
+      const midStart = bounds[0][1];
+      const midEnd = midStart + size + (rem > 1 ? 1 : 0);
+      bounds.push([midStart, midEnd]);
+      bounds.push([midEnd, detRecs.length]);
+      const labels = ['上位（好調で終い）', '中位', '下位（凹んで終い）'];
+      bounds.forEach((b, i) => {
+        const seg = detRecs.slice(b[0], b[1]);
+        const c = seg.filter(r => r.status === 'carried').length;
+        tiers.push({
+          label: labels[i],
+          n: seg.length,
+          carried: c,
+          rate: seg.length > 0 ? c / seg.length : null,
+          thin: seg.length < MIN_TIER,
+          diffRange: seg.length ? [seg[seg.length - 1].diff, seg[0].diff] : null,
+        });
+      });
+    }
+
+    // 素の「新規高設定率」p_new：翌日に高設定 かつ その前の特定日には高設定でなかった台の割合。
+    // ＝ランダムな隣が新規に光る背景確率。ズラし率の当て馬に使う。
+    let newlyHigh = 0, activeNext = 0;
+    strata.forEach(s => {
+      const dayNext = byDate[s.nd];
+      // s.nd の前の特定日を逆算（nd-1）
+      const prevD = (() => { const d = new Date(s.nd + 'T00:00:00'); d.setDate(d.getDate() - 1);
+        return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); })();
+      const dayPrev = byDate[prevD] || {};
+      Object.values(dayNext).forEach(r => {
+        if (!reachesTier(r)) return;
+        activeNext++;
+        const no = machineNo(r);
+        const wasHigh = !!(dayPrev[no] && isHigh(dayPrev[no]));
+        if (isHigh(r) && !wasHigh) newlyHigh++;
+      });
+    });
+    const pNew = activeNext > 0 ? newlyHigh / activeNext : null;
+
+    // ズラし（B）：据え置かれなかった台の隣が翌日に新規高設定か
+    // 「新規」＝翌日に高設定 かつ 当日は高設定でなかった隣（同日固め置きの二重計上を避ける）
+    let shiftHit = 0, expShiftSum = 0;
+    notCarriedRecs.forEach(r => {
+      const nd = r.nd;
+      const dayToday = byDate[r.date];
+      const dayNext = byDate[nd];
+      const neigh = neighborsOf(r.machine) || [];
+      let hit = false, judgeableNeighbors = 0;
+      neigh.forEach(nno => {
+        const nRowNext = dayNext[nno];
+        const nRowToday = dayToday[nno];
+        if (!nRowNext || !reachesTier(nRowNext)) return; // 隣も判定不可ならカウント外
+        judgeableNeighbors++;
+        const neighHighNext = isHigh(nRowNext);
+        const neighHighToday = !!(nRowToday && isHigh(nRowToday));
+        if (neighHighNext && !neighHighToday) hit = true; // 新規高設定の隣が居る
+      });
+      if (hit) shiftHit++;
+      // この台の隣がランダムなら「少なくとも1つが新規高設定」になる期待確率
+      if (pNew != null && judgeableNeighbors > 0) {
+        expShiftSum += 1 - Math.pow(1 - pNew, judgeableNeighbors);
+      }
+    });
+    const shiftRate = notCarriedRecs.length > 0 ? shiftHit / notCarriedRecs.length : null;
+    const expectedShiftRate = notCarriedRecs.length > 0 ? expShiftSum / notCarriedRecs.length : null;
+    // 台 or 隣で残った率（据え置き成功 ＋ 据え置き失敗だが隣にズレた）÷ 判定できた台
+    const residualRate = determined > 0 ? (carriedRecs.length + shiftHit) / determined : null;
+
+    // 候補台リスト：直近の特定日の高設定台を、入った差枚層の据え置き率つきで
+    let candidateDay = null, candidates = [];
+    for (let i = dates.length - 1; i >= 0; i--) {
+      if (isSpecial(dates[i]) && dateSet.has(nextDate(dates[i]))) { candidateDay = dates[i]; break; }
+    }
+    if (candidateDay) {
+      const todays = byDate[candidateDay];
+      const highs = Object.keys(todays).map(k => parseInt(k)).filter(no => isHigh(todays[no]));
+      // その日の高設定台を差枚降順に並べ、3分割の閾値で層を割り当て
+      const withDiff = highs.map(no => ({ no, diff: diffOf(todays[no]) })).sort((a, b) => b.diff - a.diff);
+      const size = Math.max(1, Math.floor(withDiff.length / 3));
+      withDiff.forEach((x, idx) => {
+        let tierIdx = idx < size ? 0 : (idx < size * 2 ? 1 : 2);
+        const tierRate = tiers[tierIdx] ? tiers[tierIdx].rate : null;
+        candidates.push({ machine: x.no, diff: x.diff, tierIdx, tierRate });
+      });
+    }
+
+    return {
+      insufficient,
+      usedSpecialDays, pairs: strata.length,
+      determined, undetermined,
+      carried: carriedRecs.length, notCarried: notCarriedRecs.length,
+      carryoverRate, baseline, lift, z, significant,
+      tiers,
+      shift: { shiftHit, shiftRate, expectedShiftRate, pNew, residualRate,
+               notCarried: notCarriedRecs.length },
+      candidateDay, candidates,
+    };
+  }
+
+function renderCarryover() {
+  const wrap = document.getElementById('carryover-body');
+  const diag = document.getElementById('carryover-diag');
+  if (!wrap || !diag) return;
+  if (!allData || !allData.length) {
+    diag.innerHTML = 'データを読み込むと、特定日翌日の据え置き傾向をここに表示します。';
+    wrap.innerHTML = '';
+    return;
+  }
+  const deps = {
+    isHigh: (row) => isHighSetting(row),
+    reachesTier: carryoverReachesTier,
+    isSpecial: (ds) => isSpecialDay(ds),
+    nextDate: carryoverNextDay,
+    diffOf: (row) => parseFloat(row['差枚']) || 0,
+    machineNo: (row) => parseInt(row['台番号']),
+    neighborsOf: carryoverNeighborsOf,
+  };
+  const R = computeCarryover(allData, deps);
+  const pct = v => v == null ? '—' : (v * 100).toFixed(1) + '%';
+  const num = v => v == null ? '—' : v.toFixed(2);
+
+  // データ不足なら正直に沈黙
+  if (R.insufficient) {
+    diag.innerHTML = '<b>まだ判定できません。</b> 特定日→翌日ペア ' + R.pairs + '組・判定できた台 ' + R.determined +
+      '台では、据え置き傾向を統計的に語るにはデータが薄すぎます（判定不可 ' + R.undetermined + '台）。データが貯まると結論が出ます。';
+    wrap.innerHTML = '';
+    return;
+  }
+
+  // 結論バナー
+  diag.innerHTML = R.significant
+    ? '<b>据え置き狙いが有効な傾向。</b> 特定日の高設定台は翌日 <b>' + pct(R.carryoverRate) + '</b> の割合で据え置かれています（翌日の全体高設定率 ' +
+      pct(R.baseline) + ' ／ lift ' + num(R.lift) + '・z ' + num(R.z) + '）。偶然では説明しにくい水準です。'
+    : '据え置き率 <b>' + pct(R.carryoverRate) + '</b>（翌日の全体高設定率 ' + pct(R.baseline) + ' ／ z ' + num(R.z) +
+      '）。<b>統計的に有意な据え置き傾向は今のところ確認できません。</b>';
+
+  const sigBadge = R.significant
+    ? '<span class="badge" style="background:rgba(71,255,138,.2);color:var(--success)">有意</span>'
+    : '<span class="badge" style="background:var(--surface3);color:var(--text2)">非有意</span>';
+
+  let html = '';
+
+  // ① 据え置き率 vs ベースライン
+  html += '<div class="card"><div class="card-title">据え置き率 vs 翌日ベースライン ' + sigBadge + '</div>';
+  html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">';
+  html += statBox('据え置き率', pct(R.carryoverRate), 'var(--accent)');
+  html += statBox('翌日の全体率', pct(R.baseline), 'var(--text2)');
+  html += statBox('lift（率÷期待）', num(R.lift), R.lift != null && R.lift > 1 ? 'var(--success)' : 'var(--text2)');
+  html += statBox('z値（≥1.96で有意）', num(R.z), R.significant ? 'var(--success)' : 'var(--text2)');
+  html += '</div>';
+  html += '<div style="font-size:11px;color:var(--text2);margin-top:12px;line-height:1.7">' +
+    '特定日→翌日ペア <b style="color:var(--text)">' + R.pairs + '組</b>／判定できた台 <b style="color:var(--text)">' + R.determined + '台</b>' +
+    '（据え置き ' + R.carried + '・非据え置き ' + R.notCarried + '）／回転不足で判定不可 <b style="color:var(--warning)">' + R.undetermined + '台</b>（分母から除外）。<br>' +
+    '※ 翌日ごとに全体率で条件を揃えて比較（Mantel-Haenszel層別）。甘い翌日が偶然多かっただけの水増しを排除しています。' +
+    '</div></div>';
+
+  // ② 差枚3分割
+  if (R.tiers.length === 3) {
+    const best = R.tiers.reduce((a, b) => ((b.rate != null && (a.rate == null || b.rate > a.rate)) ? b : a), { rate: null });
+    html += '<div class="card"><div class="card-title">差枚3分割 — どの層が据え置かれやすいか</div>';
+    html += '<table class="data-table"><thead><tr><th>層（特定日の差枚）</th><th>差枚レンジ</th><th>台数</th><th>据え置き率</th></tr></thead><tbody>';
+    R.tiers.forEach(t => {
+      const isBest = (t === best && t.rate != null && !t.thin);
+      const range = t.diffRange ? (fmtDiff(t.diffRange[0]) + ' 〜 ' + fmtDiff(t.diffRange[1])) : '—';
+      html += '<tr' + (isBest ? ' class="high"' : '') + '><td>' + t.label + (isBest ? ' 🎯' : '') + '</td><td>' + range +
+        '</td><td>' + t.n + (t.thin ? ' <span style="color:var(--warning)">※薄い</span>' : '') + '</td><td style="font-weight:700' +
+        (isBest ? ';color:var(--accent3)' : '') + '">' + pct(t.rate) + '</td></tr>';
+    });
+    html += '</tbody></table>';
+    html += '<div style="font-size:11px;color:var(--text2);margin-top:10px;line-height:1.7">' +
+      '「上位＝好調で終えた高設定」「下位＝凹んで終えた高設定」。下位の据え置き率が高ければ<b style="color:var(--text)">凹み据え置き型</b>、上位が高ければ<b style="color:var(--text)">好調継続型</b>の店のクセです。※薄い層は参考値。' +
+      '</div></div>';
+  }
+
+  // ③ ズラし（B）
+  const s = R.shift;
+  const shiftReal = (s.shiftRate != null && s.expectedShiftRate != null && s.notCarried >= 8 && s.shiftRate > s.expectedShiftRate * 1.2);
+  html += '<div class="card"><div class="card-title">ズラし — 据え置かれなかった台の「隣」は上がったか</div>';
+  html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">';
+  html += statBox('ズラし率', pct(s.shiftRate), shiftReal ? 'var(--accent2)' : 'var(--text2)');
+  html += statBox('ランダム期待', pct(s.expectedShiftRate), 'var(--text2)');
+  html += statBox('台 or 隣で残った率', pct(s.residualRate), 'var(--text)');
+  html += statBox('非据え置き台数', String(s.notCarried), 'var(--text2)');
+  html += '</div>';
+  html += '<div style="font-size:11px;color:var(--text2);margin-top:12px;line-height:1.7">' +
+    '据え置かれなかった ' + s.notCarried + '台のうち、翌日に<b style="color:var(--text)">隣（島の並びで前後）</b>が新規高設定だった台が ' + s.shiftHit + '台。<br>' +
+    (shiftReal
+      ? '<b style="color:var(--accent2)">ズラし率がランダム期待を明確に上回っています。横ズラし傾向あり。</b>据え置かれなかった台の隣も候補に入れる価値があります。'
+      : 'ズラし率はランダムに隣が光る背景（' + pct(s.expectedShiftRate) + '）と同程度で、明確な横ズラし傾向は確認できません。') +
+    '<br>※ ズラしは記述（有意性の主張はしません）。「新規」＝当日は高設定でなかった隣が翌日に高設定、で二重計上を排除。' +
+    '</div></div>';
+
+  // ④ 候補台リスト
+  if (R.candidateDay && R.candidates.length) {
+    html += '<div class="card"><div class="card-title">翌日据え置き狙い候補台 — 直近の特定日 ' + R.candidateDay + ' の高設定台</div>';
+    html += '<table class="data-table"><thead><tr><th>台番号</th><th>特定日の差枚</th><th>差枚層（目安）</th><th>その層の据え置き率</th></tr></thead><tbody>';
+    const tierLabels = ['上位', '中位', '下位'];
+    R.candidates.forEach(c => {
+      const likely = (c.tierRate != null && R.carryoverRate != null && c.tierRate >= R.carryoverRate);
+      html += '<tr' + (likely ? ' class="high"' : '') + '><td style="font-weight:700">' + c.machine + (likely ? ' 🎯' : '') +
+        '</td><td>' + fmtDiff(c.diff) + '</td><td>' + (tierLabels[c.tierIdx] || '—') + '</td><td style="font-weight:700' +
+        (likely ? ';color:var(--accent3)' : '') + '">' + pct(c.tierRate) + '</td></tr>';
+    });
+    html += '</tbody></table>';
+    html += '<div style="font-size:11px;color:var(--text2);margin-top:10px;line-height:1.7">' +
+      '🎯＝入った差枚層の据え置き率が全体の据え置き率（' + pct(R.carryoverRate) + '）以上の台。翌日に残りやすい候補の目安です。層は当日の差枚順で機械的に割当。' +
+      '</div></div>';
+  }
+
+  wrap.innerHTML = html;
+
+  function statBox(label, value, color) {
+    return '<div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:12px">' +
+      '<div style="font-size:10px;color:var(--text2);letter-spacing:1px;text-transform:uppercase;margin-bottom:6px">' + label + '</div>' +
+      '<div style="font-size:22px;font-weight:700;color:' + color + '">' + value + '</div></div>';
+  }
+  function fmtDiff(v) { const n = Math.round(v); return (n > 0 ? '+' : '') + n.toLocaleString(); }
+}
+
 
 
 function renderPage(id) {
@@ -1822,6 +2248,7 @@ function renderPage(id) {
   else if (id==='adjacency') renderAdjacency();
   else if (id==='halltype') renderHalltype();
   else if (id==='trend') renderTrend();
+  else if (id==='carryover') renderCarryover();
   else if (id==='spec') renderSpec();
   else if (id==='audit') renderAudit();
   else if (id==='heatmap') renderHeatmap();
