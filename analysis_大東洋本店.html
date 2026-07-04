@@ -125,6 +125,7 @@ body { background: var(--bg); color: var(--text); font-family: 'Noto Sans JP', s
     <button class="nav-item" onclick="showPage('daymap',this)"><div class="nav-dot"></div>📅 日別島図</button>
     <button class="nav-item" onclick="showPage('rotation',this)"><div class="nav-dot"></div>🔄 ローテーション分析</button>
     <button class="nav-item" onclick="showPage('adjacency',this)"><div class="nav-dot"></div>🧩 島の並び文脈</button>
+    <button class="nav-item" onclick="showPage('halltype',this)"><div class="nav-dot"></div>🏷️ 店の型判定</button>
     <button class="nav-item" onclick="showPage('spec',this)"><div class="nav-dot"></div>🎯 解析値マッチ</button>
     <button class="nav-item" onclick="showPage('audit',this)"><div class="nav-dot"></div>🔬 予兆発見監査</button>
     <button class="nav-item" onclick="showPage('heatmap',this)"><div class="nav-dot"></div>曜日×台番号ヒートマップ</button>
@@ -308,6 +309,48 @@ body { background: var(--bg); color: var(--text); font-family: 'Noto Sans JP', s
       <div class="card-title">🔗 連（れん）の検出：同じ日に2台以上連続で高設定だった並び</div>
       <div style="font-size:11px;color:var(--text2);margin-bottom:10px">固め置きの「証拠」。同じ列で物理的に隣り合う台が同じ日にまとめて高設定だったケースを新しい順に並べます。</div>
       <div id="adjacency-runs"></div>
+    </div>
+  </div>
+
+  <!-- 店の型判定 -->
+  <div class="page" id="page-halltype">
+    <div class="page-header">
+      <div class="page-title">🏷️ 店の型<span>判定</span></div>
+      <div class="page-sub">この機種がこの店で「角系／末尾系／単品系」のどの型で使われているかを診断します（角度・末尾度・単品度で判定）</div>
+    </div>
+
+    <div class="card">
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <label style="font-size:12px;color:var(--text2)">対象</label>
+        <select id="halltype-filter" style="background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:var(--radius);padding:8px 12px;font-size:13px">
+          <option value="special">特定日のみ</option>
+          <option value="normal">通常日のみ</option>
+          <option value="all">全期間</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">判定結果</div>
+      <div id="halltype-verdict"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">📐 角度：角台に集める店か</div>
+      <div style="font-size:11px;color:var(--text2);margin-bottom:10px">角台の高設定率 ÷ 非角台の高設定率。1.5倍以上なら角系のサイン。</div>
+      <div id="halltype-corner"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">🔢 末尾度：特定の末尾に集める店か</div>
+      <div style="font-size:11px;color:var(--text2);margin-bottom:10px">最も高い末尾の率 ÷ 全体平均。1.8倍以上なら末尾系のサイン（サンプルが少ない末尾は判定から除外）。</div>
+      <div id="halltype-suffix"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">🎯 単品度：バラして少数だけ入れる店か</div>
+      <div style="font-size:11px;color:var(--text2);margin-bottom:10px">角度も末尾度も弱く、1日あたりの高設定台数も少ないなら単品系（バラ）。</div>
+      <div id="halltype-single"></div>
     </div>
   </div>
 
@@ -819,7 +862,7 @@ function setLoadStatus(msg, type) {
   el.style.color = type==='error'?'var(--error)':type==='success'?'var(--success)':'var(--text2)';
 }
 function renderAllPages() {
-  ['target','overview','suffix','daytype','correlation','interval','zone','heatmap','machinetrend','daymap','rotation','adjacency'].forEach(id => renderPage(id));
+  ['target','overview','suffix','daytype','correlation','interval','zone','heatmap','machinetrend','daymap','rotation','adjacency','halltype'].forEach(id => renderPage(id));
 }
 
 // ── 日別島図 ──────────────────────────────
@@ -1196,6 +1239,180 @@ function renderAdjacency() {
   }
 }
 
+let halltypeCache = {};
+
+function renderHalltype() {
+  const dayFilter = document.getElementById('halltype-filter').value; // special/normal/all
+  document.getElementById('halltype-filter').onchange = renderHalltype;
+
+  const rows = allData.filter(r => {
+    const ds = String(r['日付']).substring(0,10);
+    if (dayFilter === 'special' && !isSpecialDay(ds)) return false;
+    if (dayFilter === 'normal'  &&  isSpecialDay(ds)) return false;
+    return true;
+  });
+
+  const cornerSet = new Set(getCornerMachines());
+  const cornerDefined = cornerSet.size > 0;
+
+  let cTot=0,cHigh=0,ncTot=0,ncHigh=0,totAll=0,highAll=0;
+  const suf = {};
+  for (let i=0;i<10;i++) suf[i] = {tot:0,high:0};
+  const daySet = new Set();
+
+  rows.forEach(r => {
+    const m = parseInt(r['台番号']);
+    const hi = isHighSetting(r);
+    totAll++; if (hi) highAll++;
+    daySet.add(String(r['日付']).substring(0,10));
+    const s = parseInt(String(m).slice(-1));
+    if (cornerSet.has(m)) { cTot++; if (hi) cHigh++; }
+    else { ncTot++; if (hi) ncHigh++; suf[s].tot++; if (hi) suf[s].high++; }
+  });
+
+  const targetDays = daySet.size;
+  const overallRate = totAll > 0 ? highAll/totAll : 0;
+
+  // ── 角度 ──
+  const cornerRate    = cTot  > 0 ? cHigh/cTot   : 0;
+  const nonCornerRate = ncTot > 0 ? ncHigh/ncTot : 0;
+  const cornerLift = nonCornerRate > 0 ? cornerRate/nonCornerRate : (cornerRate>0?Infinity:0);
+  const cornerEnough = cornerDefined && cTot>=10 && ncTot>=10;
+  const cornerSE = (cornerEnough && nonCornerRate>0 && nonCornerRate<1) ? Math.sqrt(nonCornerRate*(1-nonCornerRate)/cTot) : 0;
+  const cornerZ = cornerSE>0 ? (cornerRate-nonCornerRate)/cornerSE : 0;
+  const cornerSignificant = cornerZ >= 1.96;
+
+  // ── 末尾度 ──
+  const MIN_SUF = 10;
+  const sufRows = [];
+  let maxSuf=-1, maxSufRate=0;
+  for (let i=0;i<10;i++) {
+    const d = suf[i];
+    if (d.tot === 0) continue;
+    const rate = d.high/d.tot;
+    const qualifies = d.tot >= MIN_SUF;
+    sufRows.push({s:i, rate, high:d.high, tot:d.tot, qualifies});
+    if (qualifies && rate > maxSufRate) { maxSufRate = rate; maxSuf = i; }
+  }
+  const sufBaseline = ncTot > 0 ? nonCornerRate : overallRate;
+  const suffixLift = (sufBaseline>0 && maxSuf>=0) ? maxSufRate/sufBaseline : 0;
+  const sufSE = (maxSuf>=0 && sufBaseline>0 && sufBaseline<1) ? Math.sqrt(sufBaseline*(1-sufBaseline)/suf[maxSuf].tot) : 0;
+  const suffixZ = sufSE>0 ? (maxSufRate-sufBaseline)/sufSE : 0;
+  const suffixSignificant = suffixZ >= 2.58;
+  const suffixEnough = maxSuf >= 0;
+
+  // ── 単品度 ──
+  const avgHighPerDay = targetDays > 0 ? highAll/targetDays : 0;
+
+  // ── 判定 ──
+  const enough = totAll >= 30 && targetDays >= 3;
+  const signals = [];
+  if (cornerEnough && cornerLift >= 1.5 && cornerSignificant) signals.push('角系');
+  if (suffixEnough && suffixLift >= 1.8 && suffixSignificant) signals.push('末尾系');
+
+  let verdict, vColor, vDesc;
+  if (!enough) {
+    verdict = 'データ不足'; vColor = 'var(--text2)';
+    vDesc = '判定に必要なデータが足りません（対象日が3日以上・観測30件以上で安定します）。対象を「全期間」に切り替えるか、データが増えるのを待ってください。';
+  } else if (signals.length === 0) {
+    verdict = '単品系（バラ）'; vColor = '#47ff8a';
+    vDesc = 'この機種は、角にも末尾にも偏りなく、少数の台がバラバラに高設定になる使われ方です。狙い目は1台ごとの個別判断が中心になります。';
+  } else if (signals.length === 1) {
+    verdict = signals[0]; vColor = (signals[0]==='角系') ? 'var(--accent3)' : '#e8ff47';
+    vDesc = (signals[0]==='角系')
+      ? 'この機種は、高設定が角台（島の端）に集まる使われ方です。角台を厚めに狙うのが有効になりやすいです。'
+      : 'この機種は、高設定が特定の末尾に集まる使われ方です。その末尾を絞って狙うのが有効になりやすいです。';
+  } else {
+    verdict = '複合（' + signals.join('＋') + '）'; vColor = '#ff6b47';
+    vDesc = 'この機種は、角台と末尾の両方に偏りが見られる複合タイプです。両方の条件を満たす台が特に有力候補になります。';
+  }
+
+  halltypeCache[sheetName] = { dayFilter, cornerLift, suffixLift, maxSuf, avgHighPerDay, verdict, enough };
+
+  // ── 判定結果カード描画 ──
+  const dayLabel = dayFilter==='special' ? '特定日' : dayFilter==='normal' ? '通常日' : '全期間';
+  document.getElementById('halltype-verdict').innerHTML =
+    '<div style="display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin-bottom:12px">' +
+      '<div style="font-size:30px;font-weight:700;color:' + vColor + '">' + verdict + '</div>' +
+      '<div style="font-size:11px;color:var(--text2)">' + dayLabel + '・' + targetDays + '日／' + totAll + '件・全体高設定率 ' + (overallRate*100).toFixed(1) + '%</div>' +
+    '</div>' +
+    '<div style="font-size:13px;color:var(--text);line-height:1.7">' + vDesc + '</div>' +
+    '<div style="font-size:11px;color:var(--text2);margin-top:12px;line-height:1.6">' +
+      '※ これは「この機種がこの店でどう使われているか」という置き方の診断です。翌日の予測そのものではありません。' +
+    '</div>';
+
+  // ── 角度カード ──
+  if (!cornerDefined) {
+    document.getElementById('halltype-corner').innerHTML =
+      '<div style="color:var(--text2);font-size:13px;padding:8px">この機種は角台が定義されていないため、角度は判定できません。</div>';
+  } else if (!cornerEnough) {
+    document.getElementById('halltype-corner').innerHTML =
+      '<div style="color:var(--text2);font-size:13px;padding:8px">角台 ' + cHigh + '/' + cTot + '件、非角台 ' + ncHigh + '/' + ncTot + '件。サンプルが少なく判定保留（各10件以上で安定）。</div>';
+  } else {
+    const liftStr = cornerLift===Infinity ? '∞' : cornerLift.toFixed(2);
+    const cornerHit = cornerLift >= 1.5 && cornerSignificant;
+    const sign = cornerHit ? '角系のサインあり（統計的に有意）' : (cornerLift >= 1.5 ? '倍率は高いが有意でない（サンプル不足の可能性）' : '角への偏りは弱い');
+    const sc = cornerHit ? 'var(--accent3)' : 'var(--text2)';
+    document.getElementById('halltype-corner').innerHTML =
+      '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px">' +
+        '<div style="flex:1;min-width:130px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:12px">' +
+          '<div style="font-size:11px;color:var(--accent3)">角台の高設定率</div>' +
+          '<div style="font-size:22px;font-weight:700;font-family:monospace,monospace;color:var(--text)">' + (cornerRate*100).toFixed(1) + '%</div>' +
+          '<div style="font-size:10px;color:var(--text2)">' + cHigh + '/' + cTot + '</div>' +
+        '</div>' +
+        '<div style="flex:1;min-width:130px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:12px">' +
+          '<div style="font-size:11px;color:var(--text2)">非角台の高設定率</div>' +
+          '<div style="font-size:22px;font-weight:700;font-family:monospace,monospace;color:var(--text)">' + (nonCornerRate*100).toFixed(1) + '%</div>' +
+          '<div style="font-size:10px;color:var(--text2)">' + ncHigh + '/' + ncTot + '</div>' +
+        '</div>' +
+      '</div>' +
+      '<div style="font-size:14px"><span style="color:var(--text2)">角度＝</span><b style="color:' + sc + ';font-family:monospace,monospace">' + liftStr + '倍</b> <span style="font-size:11px;color:var(--text2);font-family:monospace,monospace">(z=' + cornerZ.toFixed(1) + ')</span>　<span style="color:' + sc + '">' + sign + '</span></div>';
+  }
+
+  // ── 末尾度カード ──
+  if (!suffixEnough) {
+    document.getElementById('halltype-suffix').innerHTML =
+      '<div style="color:var(--text2);font-size:13px;padding:8px">末尾ごとのサンプルが少なく判定できません（各末尾10件以上必要）。</div>';
+  } else {
+    sufRows.sort((a,b)=>b.rate-a.rate);
+    const tableRows = sufRows.map(row => {
+      const isMax = row.s === maxSuf;
+      const dim = row.qualifies ? '' : 'opacity:0.45';
+      return '<tr style="border-bottom:1px solid var(--border);' + dim + '">' +
+        '<td style="padding:6px 10px;font-family:monospace,monospace;font-size:13px;color:' + (isMax?'#e8ff47':'var(--text)') + ';font-weight:' + (isMax?'700':'400') + '">末尾' + row.s + (isMax?' ★':'') + '</td>' +
+        '<td style="padding:6px 10px;text-align:right;font-family:monospace,monospace;font-size:13px;color:var(--text)">' + (row.rate*100).toFixed(1) + '%</td>' +
+        '<td style="padding:6px 10px;text-align:right;font-size:11px;color:var(--text2)">' + row.high + '/' + row.tot + (row.qualifies?'':' (少)') + '</td>' +
+      '</tr>';
+    }).join('');
+    const liftStr2 = suffixLift.toFixed(2);
+    const suffixHit = suffixLift >= 1.8 && suffixSignificant;
+    const sign2 = suffixHit ? '末尾系のサインあり（多重比較補正後も有意）' : (suffixLift >= 1.8 ? '倍率は高いが有意でない（偶然の偏りの可能性）' : '末尾への偏りは弱い');
+    const sc2 = suffixHit ? '#e8ff47' : 'var(--text2)';
+    document.getElementById('halltype-suffix').innerHTML =
+      '<div style="font-size:14px;margin-bottom:10px"><span style="color:var(--text2)">末尾度＝最も高い末尾' + maxSuf + '（' + (maxSufRate*100).toFixed(1) + '%）÷ 非角台平均（' + (sufBaseline*100).toFixed(1) + '%）＝</span><b style="color:' + sc2 + ';font-family:monospace,monospace">' + liftStr2 + '倍</b> <span style="font-size:11px;color:var(--text2);font-family:monospace,monospace">(z=' + suffixZ.toFixed(1) + ')</span>　<span style="color:' + sc2 + '">' + sign2 + '</span></div>' +
+      '<div style="font-size:10px;color:var(--text2);margin-bottom:8px">※ 角台の影響を除くため、末尾度は非角台のみで計算しています。</div>' +
+      '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse">' +
+        '<thead><tr style="border-bottom:2px solid var(--border)">' +
+          '<th style="padding:6px 10px;text-align:left;font-size:11px;color:var(--text2)">末尾</th>' +
+          '<th style="padding:6px 10px;text-align:right;font-size:11px;color:var(--text2)">高設定率</th>' +
+          '<th style="padding:6px 10px;text-align:right;font-size:11px;color:var(--text2)">件数</th>' +
+        '</tr></thead><tbody>' + tableRows + '</tbody></table></div>';
+  }
+
+  // ── 単品度カード ──
+  const noConc = signals.length === 0 && enough;
+  const singleColor = noConc ? '#47ff8a' : 'var(--text2)';
+  const singleMsg = noConc
+    ? '角度・末尾度ともに弱く、1日あたり平均 ' + avgHighPerDay.toFixed(1) + ' 台。バラして入れる単品系の特徴です。'
+    : '1日あたり平均 ' + avgHighPerDay.toFixed(1) + ' 台。' + (signals.length>0 ? '角または末尾に偏りがあるため、単品系ではありません。' : '');
+  document.getElementById('halltype-single').innerHTML =
+    '<div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">' +
+      '<div style="font-size:22px;font-weight:700;font-family:monospace,monospace;color:' + singleColor + '">' + avgHighPerDay.toFixed(1) + ' 台/日</div>' +
+      '<div style="font-size:11px;color:var(--text2)">対象日の1日あたり平均高設定台数</div>' +
+    '</div>' +
+    '<div style="font-size:13px;color:var(--text);line-height:1.7;margin-top:8px">' + singleMsg + '</div>';
+}
+
 
 
 function renderPage(id) {
@@ -1207,6 +1424,7 @@ function renderPage(id) {
   else if (id==='daymap') renderDayMap();
   else if (id==='rotation') renderRotation();
   else if (id==='adjacency') renderAdjacency();
+  else if (id==='halltype') renderHalltype();
   else if (id==='spec') renderSpec();
   else if (id==='audit') renderAudit();
   else if (id==='heatmap') renderHeatmap();

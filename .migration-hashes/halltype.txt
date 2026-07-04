@@ -1,0 +1,15 @@
+# Step4: 店の型判定（halltype）移植の抽出元ハッシュ
+# コピー元：analysis_グラン本店.html（403-443行目=HTML, 3555-3727行目=関数）
+# 関数ブロックの開始点は見出しコメントではなく、モジュールレベルのキャッシュ変数
+# let halltypeCache = {}; （renderHalltype内3643行で参照されるため含める必要あり）
+# 統計処理：末尾度のz検定にBonferroni補正（しきい値2.58=z_{0.05/10}、末尾10種固定分母）。
+# 2026-07-04 daitoyo-7features ブランチで大東洋本店へ挿入。
+[html]
+start_marker=<!-- 店の型判定 -->
+lines=41
+sha256=77627e3a752548df30794c1c121f3df92fffcbeddcca7068ffc5930b3d65884b
+
+[func]
+start_marker=let halltypeCache = {};
+lines=173
+sha256=e530852d0fd3b3f396c5af9ca2a32f0d3d97ccf82337b47193dfb65aff45c012
