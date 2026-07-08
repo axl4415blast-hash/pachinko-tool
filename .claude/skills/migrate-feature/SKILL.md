@@ -58,6 +58,7 @@ description: グラン本店の機能を大東洋本店へ移植する際の標�
 - `.claude/hooks/check-undefined-refs.js`で未定義参照が無いことを確認する。
 - 埋め込みコアがある場合は`*_core.js`とdiffでバイト一致を確認する。
 - **複数機能が同一ファイルに蓄積されるプロジェクトでは、個別Stepの検証（境界・配線・ハッシュ一致）に加えて、全機能結合後にfunction名の重複チェックを最低1回（最終機能の着手前後）実施すること。**`let`/`const`宣言は重複時に構文エラーとなり検出されるが、`function`宣言は無言で上書きされるため、個別Stepの検証だけでは発見できない。確認コマンド例：`grep -oE 'function [a-zA-Z_][a-zA-Z0-9_]*' analysis_大東洋本店.html | sort | uniq -c | awk '$1>=2'`。出た重複がグラン本店にも同数で存在する（＝IIFEコア内のスコープ付きヘルパー）なら安全、大東洋にだけある重複はグローバル衝突を疑う（driftで`driftFmt`が前回移植の巻き込みで二重定義されていた実例あり）。
+- **同様に、HTMLの`id`重複も全機能結合後に確認すること。** HTMLブロックの範囲を誤ると（page-Xの終端を見誤り、後続の別ページまで巻き込んで挿入）ページdivごと二重化し、同一idが複数になる。`document.getElementById`は先頭要素のみ返すため後方が死蔵され、しかも先頭が別バージョンだと実害が出る（carryoverでpage-carryoverの範囲を誤りpage-heatmap/page-machinetrendを二重化した実例あり）。確認コマンド例：`grep -oE 'id="[a-zA-Z_][a-zA-Z0-9_-]*"' analysis_大東洋本店.html | sort | uniq -c | awk '$1>=2'`。コミット時は`check-html-id-duplicates.js`が自動検出する。
 
 ## 6. 合成データ検証
 

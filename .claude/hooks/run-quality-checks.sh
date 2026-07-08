@@ -76,10 +76,16 @@ if ! node "$SCRIPT_DIR/check-function-duplicates.js"; then
   FAIL=1
 fi
 
+# 7) HTML id の重複（ページブロックの二重挿入）検出
+if ! node "$SCRIPT_DIR/check-html-id-duplicates.js"; then
+  echo "run-quality-checks: HTML id重複 — commit blocked。" >&2
+  FAIL=1
+fi
+
 if [ "$FAIL" -ne 0 ]; then
   echo "run-quality-checks: FAILED — commit blocked. 上のエラーを直して再実行してください。" >&2
   exit 2
 fi
 
-echo "run-quality-checks: 構文OK / div balance OK / コア一致OK / 未定義参照なし / 移植ハッシュOK / 関数重複なし。" >&2
+echo "run-quality-checks: 構文OK / div balance OK / コア一致OK / 未定義参照なし / 移植ハッシュOK / 関数重複なし / id重複なし。" >&2
 exit 0
