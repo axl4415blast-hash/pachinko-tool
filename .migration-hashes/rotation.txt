@@ -1,0 +1,12 @@
+# Step2: ローテーション分析（rotation）移植の抽出元ハッシュ
+# コピー元：analysis_グラン本店.html（355-382行目=HTML, 3275-3405行目=関数）
+# 2026-07-04 daitoyo-7features ブランチで大東洋本店へ挿入。
+[html]
+start_marker=<!-- ローテーション分析 -->
+lines=28
+sha256=c56f8c77a52056bdeeab7857d4798653c3f61b2f073740316daba03a45b70ad2
+
+[func]
+start_marker=// ── ローテーション分析 ──────────────────────────────
+lines=131
+sha256=de1721173906028424a3755874d679c33815ed750ca2b4e59a296a1f3de3e501

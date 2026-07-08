@@ -106,6 +106,26 @@ body { background: var(--bg); color: var(--text); font-family: 'Noto Sans JP', s
   .suffix-grid { grid-template-columns: repeat(5, 1fr); }
   #load-status { font-size: 10px; }
 }
+/* ── 傾向ドリフト ── */
+.diag-banner{background:linear-gradient(90deg,rgba(232,255,71,.08),rgba(71,200,255,.05));border:1px solid rgba(232,255,71,.3);border-radius:var(--radius);padding:14px 16px;margin:0 0 16px;font-size:14px;line-height:1.6}
+.diag-banner b{color:var(--accent)}
+.drift-sec-label{font-size:11px;color:var(--text2);font-weight:700;letter-spacing:1px;margin:6px 0 10px;text-transform:uppercase;display:flex;align-items:center;gap:8px}
+.drift-sec-label::after{content:"";flex:1;height:1px;background:var(--border)}
+.drift-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px}
+@media(max-width:760px){.drift-grid{grid-template-columns:1fr}}
+.drift-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px}
+.drift-card.pinned{border-color:rgba(232,255,71,.45);background:linear-gradient(180deg,rgba(232,255,71,.03),var(--surface))}
+.drift-mhead{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:8px}
+.drift-mtitle{font-size:13px;font-weight:700;line-height:1.4}
+.drift-mtitle small{display:block;font-weight:400;color:var(--text2);font-size:10px;margin-top:2px}
+.drift-pin-btn{background:none;border:1px solid var(--border);color:var(--text2);border-radius:6px;cursor:pointer;font-size:13px;padding:3px 8px;flex-shrink:0;transition:all .15s}
+.drift-pin-btn:hover{border-color:var(--accent);color:var(--accent)}
+.drift-pin-btn.on{background:rgba(232,255,71,.15);border-color:var(--accent);color:var(--accent)}
+.drift-chip{font-size:10px;padding:2px 8px;border-radius:20px;font-weight:700;white-space:nowrap;display:inline-block;margin-bottom:8px}
+.drift-chip.move{background:rgba(71,255,138,.14);color:var(--success);border:1px solid rgba(71,255,138,.4)}
+.drift-chip.flat{background:rgba(120,120,120,.14);color:var(--text2);border:1px solid var(--border)}
+.drift-chip.nd{background:rgba(255,179,71,.12);color:var(--warning);border:1px solid rgba(255,179,71,.35)}
+.drift-chart-wrap{position:relative;height:180px}
 </style>
 </head>
 <body>
@@ -119,9 +139,16 @@ body { background: var(--bg); color: var(--text); font-family: 'Noto Sans JP', s
   <div class="nav-section">
     <div class="nav-label">分析メニュー</div>
     <button class="nav-item active" onclick="showPage('target',this)"><div class="nav-dot"></div>🎯 明日の狙い目台</button>
+    <button class="nav-item" onclick="showPage('drift',this)"><div class="nav-dot"></div>📉 傾向ドリフト</button>
     <button class="nav-item" onclick="showPage('suffix',this)"><div class="nav-dot"></div>末尾番号傾向</button>
     <button class="nav-item" onclick="showPage('daytype',this)"><div class="nav-dot"></div>特定日・曜日分析</button>
     <button class="nav-item" onclick="showPage('zone',this)"><div class="nav-dot"></div>島・ゾーン分析</button>
+    <button class="nav-item" onclick="showPage('daymap',this)"><div class="nav-dot"></div>📅 日別島図</button>
+    <button class="nav-item" onclick="showPage('rotation',this)"><div class="nav-dot"></div>🔄 ローテーション分析</button>
+    <button class="nav-item" onclick="showPage('adjacency',this)"><div class="nav-dot"></div>🧩 島の並び文脈</button>
+    <button class="nav-item" onclick="showPage('halltype',this)"><div class="nav-dot"></div>🏷️ 店の型判定</button>
+    <button class="nav-item" onclick="showPage('trend',this)"><div class="nav-dot"></div>📈 直近トレンド×前回同種日</button>
+    <button class="nav-item" onclick="showPage('carryover',this)"><div class="nav-dot"></div>🔁 特定日翌日の据え置き</button>
     <button class="nav-item" onclick="showPage('spec',this)"><div class="nav-dot"></div>🎯 解析値マッチ</button>
     <button class="nav-item" onclick="showPage('audit',this)"><div class="nav-dot"></div>🔬 予兆発見監査</button>
     <button class="nav-item" onclick="showPage('heatmap',this)"><div class="nav-dot"></div>曜日×台番号ヒートマップ</button>
@@ -179,6 +206,30 @@ body { background: var(--bg); color: var(--text); font-family: 'Noto Sans JP', s
     <div id="target-result"></div>
   </div>
 
+  <!-- 傾向ドリフト -->
+  <div class="page" id="page-drift">
+    <div class="page-header">
+      <div class="page-title">📉 傾向<span>ドリフト</span>（店のクセの推移）</div>
+      <div class="page-sub" id="drift-sub">週次で店のクセを可視化。段差＝方針が変わった可能性を、あなたが答え合わせする画面です。</div>
+    </div>
+    <div class="card" style="line-height:1.7;font-size:12px;color:var(--text2)">
+      日々の数字ではなく「店のクセのベクトル」を週ごとに折れ線で見ます。どれが重要かは店・時期で変わるため、機械は主役を決めません。
+      各グラフの<b style="color:var(--text)">「直近の動き」タグ</b>を手がかりに、気になる軸は <b style="color:var(--accent)">📌</b> で上に固定できます（店ごとに保存）。
+    </div>
+    <div class="diag-banner" id="drift-diag"></div>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:0 0 16px">
+      <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text2);cursor:pointer;background:var(--surface2);border:1px solid var(--border);padding:8px 14px;border-radius:20px">
+        <input type="checkbox" id="drift-smooth" style="accent-color:var(--accent)"> 3週移動平均で均す
+      </label>
+    </div>
+    <div id="drift-pinned-section" style="display:none">
+      <div class="drift-sec-label">📌 ピン留め（重視中）</div>
+      <div class="drift-grid" id="drift-pinned-row"></div>
+    </div>
+    <div class="drift-sec-label" id="drift-others-label">すべての指標</div>
+    <div class="drift-grid" id="drift-unpinned-row"></div>
+  </div>
+
   <!-- Suffix -->
   <div class="page" id="page-suffix">
     <div class="page-header">
@@ -226,6 +277,160 @@ body { background: var(--bg); color: var(--text); font-family: 'Noto Sans JP', s
       <div id="zone-heatmap"></div>
     </div>
   </div>
+
+  <!-- 日別島図 -->
+  <div class="page" id="page-daymap">
+    <div class="page-header">
+      <div class="page-title">📅 日別<span>島図</span></div>
+      <div class="page-sub">選んだ日に実際どの台に高設定が入っていたかを島の配置で確認</div>
+    </div>
+
+    <div class="card">
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <label style="font-size:12px;color:var(--text2)">日付を選択</label>
+        <select id="daymap-date-select" style="background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:var(--radius);padding:8px 12px;font-size:13px"></select>
+      </div>
+    </div>
+
+    <div class="card" id="daymap-info" style="display:none">
+      <div style="display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--text2)">
+        <span id="daymap-date-label" style="font-size:14px;font-weight:700;color:var(--text)"></span>
+        <span id="daymap-weekday-label"></span>
+        <span id="daymap-daytype-label"></span>
+        <span id="daymap-highcount-label"></span>
+      </div>
+    </div>
+
+    <div class="card" style="display:flex;gap:16px;flex-wrap:wrap;font-size:11px;color:var(--text2);align-items:center">
+      <div style="display:flex;align-items:center;gap:6px"><div style="width:14px;height:14px;border-radius:3px;background:#ff3b30"></div>高設定</div>
+      <div style="display:flex;align-items:center;gap:6px"><div style="width:14px;height:14px;border-radius:3px;background:var(--surface2);border:1px solid var(--border)"></div>通常</div>
+      <div style="display:flex;align-items:center;gap:6px"><div style="width:14px;height:14px;border-radius:3px;background:var(--surface);border:1px dashed var(--text3)"></div>データなし</div>
+      <div style="display:flex;align-items:center;gap:6px"><div style="width:14px;height:14px;border-radius:3px;background:var(--surface2);border:2px solid var(--accent2)"></div>角台</div>
+    </div>
+
+    <div class="card" id="daymap-result"></div>
+  </div>
+
+  <!-- ローテーション分析 -->
+    <div class="page" id="page-rotation">
+    <div class="page-header">
+      <div class="page-title">🔄 ローテーション<span>分析</span></div>
+      <div class="page-sub">前回高設定だった場所に今回も入るか（追従型）／避けるか（回避型）を判定します（基準：特定日 → 次の特定日）</div>
+    </div>
+
+    <!-- サマリー：追従率/回避率 -->
+
+    <div class="card">
+      <div class="card-title">この店のローテーション傾向</div>
+      <div id="rotation-summary"></div>
+    </div>
+
+    <!-- 台番号ベースの遷移追跡 -->
+    <div class="card">
+      <div class="card-title">📍 台番号ベース：高設定だった台の次回追跡</div>
+      <div style="font-size:11px;color:var(--text2);margin-bottom:10px">前回その台に高設定が入っていたとき、次の対象日にどうなったか</div>
+      <div id="rotation-machine-result"></div>
+    </div>
+
+    <!-- 末尾ベースの遷移追跡 -->
+    <div class="card">
+      <div class="card-title">🔢 末尾ベース：高設定だった末尾の次回追跡</div>
+      <div style="font-size:11px;color:var(--text2);margin-bottom:10px">前回その末尾に高設定が入っていたとき、次の対象日にどうなったか</div>
+      <div id="rotation-suffix-result"></div>
+    </div>
+  </div>
+
+  <!-- 島の並び文脈 -->
+  <div class="page" id="page-adjacency">
+    <div class="page-header">
+      <div class="page-title">🧩 島の並び<span>文脈</span></div>
+      <div class="page-sub">高設定が「隣同士で固まる店」か「散らす店」かを判定します（同じ列の前後1台を隣とみなします）</div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">この店の並び傾向</div>
+      <div id="adjacency-summary"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">🔗 連（れん）の検出：同じ日に2台以上連続で高設定だった並び</div>
+      <div style="font-size:11px;color:var(--text2);margin-bottom:10px">固め置きの「証拠」。同じ列で物理的に隣り合う台が同じ日にまとめて高設定だったケースを新しい順に並べます。</div>
+      <div id="adjacency-runs"></div>
+    </div>
+  </div>
+
+  <!-- 店の型判定 -->
+  <div class="page" id="page-halltype">
+    <div class="page-header">
+      <div class="page-title">🏷️ 店の型<span>判定</span></div>
+      <div class="page-sub">この機種がこの店で「角系／末尾系／単品系」のどの型で使われているかを診断します（角度・末尾度・単品度で判定）</div>
+    </div>
+
+    <div class="card">
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <label style="font-size:12px;color:var(--text2)">対象</label>
+        <select id="halltype-filter" style="background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:var(--radius);padding:8px 12px;font-size:13px">
+          <option value="special">特定日のみ</option>
+          <option value="normal">通常日のみ</option>
+          <option value="all">全期間</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">判定結果</div>
+      <div id="halltype-verdict"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">📐 角度：角台に集める店か</div>
+      <div style="font-size:11px;color:var(--text2);margin-bottom:10px">角台の高設定率 ÷ 非角台の高設定率。1.5倍以上なら角系のサイン。</div>
+      <div id="halltype-corner"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">🔢 末尾度：特定の末尾に集める店か</div>
+      <div style="font-size:11px;color:var(--text2);margin-bottom:10px">最も高い末尾の率 ÷ 全体平均。1.8倍以上なら末尾系のサイン（サンプルが少ない末尾は判定から除外）。</div>
+      <div id="halltype-suffix"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">🎯 単品度：バラして少数だけ入れる店か</div>
+      <div style="font-size:11px;color:var(--text2);margin-bottom:10px">角度も末尾度も弱く、1日あたりの高設定台数も少ないなら単品系（バラ）。</div>
+      <div id="halltype-single"></div>
+    </div>
+  </div>
+
+  <!-- 直近トレンド×前回同種日 -->
+  <div class="page" id="page-trend">
+    <div class="page-header">
+      <div class="page-title">📈 直近トレンド×<span>前回同種日</span></div>
+      <div class="page-sub">「前回もアツい/最近アツい/最近ボロ負け」の3つの予兆が、実際に高設定を当てたかを過去データで答え合わせし、本物の予兆だけで次の狙い目台を出します（基準：特定日 → 次の特定日）</div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">① 予兆の答え合わせ（バックテスト）</div>
+      <div style="font-size:11px;color:var(--text2);margin-bottom:12px">過去の対象日を1日ずつ振り返り、各予兆に当てはまった台が実際に高設定だったかを集計。倍率（lift）が高く統計的に有意な予兆だけが「本物」です。</div>
+      <div id="trend-backtest"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">② 次の対象日の狙い目候補</div>
+      <div style="font-size:11px;color:var(--text2);margin-bottom:12px">答え合わせで「本物」と判定された予兆に、最新データ時点で当てはまる台を候補として表示します。</div>
+      <div id="trend-picks"></div>
+    </div>
+  </div>
+
+  <!-- ⑤ 特定日翌日 据え置き＋ズラし分析 -->
+  <div class="page" id="page-carryover">
+    <div class="page-header">
+      <div class="page-title">🔁 特定日翌日の<span>据え置き</span>＋ズラし</div>
+      <div class="page-sub">特定日に高設定だった台が、翌日（＝通常日）も据え置かれるか。外れた時は隣にズレるか。専業の「翌日据え置き狙い」をデータで検証します。</div>
+    </div>
+    <div class="diag-banner" id="carryover-diag"></div>
+    <div id="carryover-body"></div>
+  </div>
+
     <div class="page" id="page-spec">
     <div class="page-header">
       <div class="page-title">🎯 解析値<span>マッチ</span></div>
@@ -732,14 +937,1251 @@ function setLoadStatus(msg, type) {
   el.style.color = type==='error'?'var(--error)':type==='success'?'var(--success)':'var(--text2)';
 }
 function renderAllPages() {
-  ['target','overview','suffix','daytype','correlation','interval','zone','heatmap','machinetrend'].forEach(id => renderPage(id));
+  ['target','drift','overview','suffix','daytype','correlation','interval','zone','heatmap','machinetrend','daymap','rotation','adjacency','halltype','trend','carryover'].forEach(id => renderPage(id));
 }
+
+// ── 日別島図 ──────────────────────────────
+function renderDayMap() {
+  const ZONES = getZones();
+  const CORNER_MACHINES = getCornerMachines();
+
+  // データが存在する日付を新しい順に抽出
+  const allDates = [...new Set(allData.map(r => String(r['日付']).substring(0,10)))].sort((a,b)=>b.localeCompare(a));
+
+  const select = document.getElementById('daymap-date-select');
+  if (allDates.length === 0) {
+    select.innerHTML = '<option value="">データがありません</option>';
+    document.getElementById('daymap-info').style.display = 'none';
+    document.getElementById('daymap-result').innerHTML = '';
+    return;
+  }
+
+  const prevSelected = select.value;
+  select.innerHTML = allDates.map(d => {
+    const wd = WEEKDAY_NAMES[getWeekday(d)];
+    const tag = isSpecialDay(d) ? '【特定日】' : '';
+    return `<option value="${d}">${d}（${wd}）${tag}</option>`;
+  }).join('');
+
+  // 前回選択していた日付が今も存在すれば復元、なければ最新日を選択
+  select.value = allDates.includes(prevSelected) ? prevSelected : allDates[0];
+  select.onchange = null;
+  select.onchange = () => renderDayMapBody(select.value, ZONES, CORNER_MACHINES);
+
+  renderDayMapBody(select.value, ZONES, CORNER_MACHINES);
+}
+
+function renderDayMapBody(targetDate, ZONES, CORNER_MACHINES) {
+  if (!targetDate) return;
+
+  // 選択日のデータを台番号→行データのマップに変換
+  const dayRows = {};
+  allData.forEach(r => {
+    if (String(r['日付']).substring(0,10) === targetDate) {
+      dayRows[parseInt(r['台番号'])] = r;
+    }
+  });
+
+  const wd = WEEKDAY_NAMES[getWeekday(targetDate)];
+  const special = isSpecialDay(targetDate);
+  let highCount = 0;
+
+  // 情報バー表示
+  document.getElementById('daymap-info').style.display = 'flex';
+  document.getElementById('daymap-date-label').textContent = targetDate;
+  document.getElementById('daymap-weekday-label').textContent = wd + '曜日';
+  document.getElementById('daymap-daytype-label').textContent = special ? '特定日' : '通常日';
+
+  // ゾーンごとにグリッド生成
+  const html = ZONES.map((z, zi) => {
+    const cells = z.machines.map(m => {
+      const row = dayRows[m];
+      const isCorner = CORNER_MACHINES.includes(m);
+      let bg = 'var(--surface)', border = '1px dashed var(--text3)', textColor = 'var(--text3)';
+      let sub = 'データなし';
+
+      if (row) {
+        const high = isHighSetting(row);
+        if (high) {
+          highCount++;
+          bg = '#ff3b30';
+          border = '1px solid #ff3b30';
+          textColor = '#fff';
+          sub = '高設定';
+        } else {
+          bg = 'var(--surface2)';
+          border = '1px solid var(--border)';
+          textColor = 'var(--text2)';
+          sub = '通常';
+        }
+      }
+
+      if (isCorner) border = '2px solid var(--accent2)';
+
+      return `
+        <div style="background:${bg};border:${border};border-radius:6px;padding:8px 4px;text-align:center;min-width:54px">
+          <div style="font-size:11px;color:${textColor};font-family:'Courier New',monospace;font-weight:700">${m}${isCorner?'<span style="color:var(--accent2);font-size:9px;margin-left:2px">角</span>':''}</div>
+          <div style="font-size:10px;color:${textColor};margin-top:2px;opacity:0.85">${sub}</div>
+        </div>
+      `;
+    }).join('');
+
+    return `
+      <div style="margin-bottom:1.25rem">
+        <div style="font-size:11px;color:${ZONE_COLORS[zi]};font-weight:700;letter-spacing:1px;margin-bottom:8px">${z.label}</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px">${cells}</div>
+      </div>
+    `;
+  }).join('');
+
+  document.getElementById('daymap-highcount-label').textContent = '高設定 ' + highCount + '台';
+  document.getElementById('daymap-result').innerHTML = html;
+}
+
+// ── ローテーション分析 ──────────────────────────────
+function renderRotation() {
+  if (!allData.length) return;
+  renderRotationBody();
+}
+
+function renderRotationBody() {
+  const CORNER_MACHINES = getCornerMachines();
+
+  // 全日付（昇順）
+  const allDates = [...new Set(allData.map(r => String(r['日付']).substring(0,10)))].sort();
+
+  // 特定日 → 次の特定日 だけを対象日として抽出
+  const targetDates = allDates.filter(d => isSpecialDay(d));
+
+  const basisLabel = '特定日';
+
+  if (targetDates.length < 2) {
+    const msg = `<div style="color:var(--text2);font-size:13px;padding:12px">${basisLabel}のデータが2回分以上ないと追跡できません（現在${targetDates.length}回分）。</div>`;
+    document.getElementById('rotation-summary').innerHTML = msg;
+    document.getElementById('rotation-machine-result').innerHTML = '';
+    document.getElementById('rotation-suffix-result').innerHTML = '';
+    return;
+  }
+
+  // 台→日→高設定マップ
+  const machineDay = {};
+  const machines = [...new Set(allData.map(r => parseInt(r['台番号'])))].sort((a,b)=>a-b);
+  allData.forEach(r => {
+    const m = String(r['台番号']), d = String(r['日付']).substring(0,10);
+    if (!machineDay[m]) machineDay[m] = {};
+    machineDay[m][d] = isHighSetting(r);
+  });
+
+  // ── 台番号ベースの遷移 ──
+  const machineTransitions = []; // {m, prevDate, curDate, curHigh}
+  let mFollow = 0, mTotalPrevHigh = 0;
+  for (let i = 1; i < targetDates.length; i++) {
+    const prev = targetDates[i-1], cur = targetDates[i];
+    machines.forEach(m => {
+      const ms = String(m);
+      if (machineDay[ms]?.[prev]) {
+        mTotalPrevHigh++;
+        const curHigh = !!machineDay[ms]?.[cur];
+        if (curHigh) mFollow++;
+        machineTransitions.push({ m, prevDate: prev, curDate: cur, curHigh });
+      }
+    });
+  }
+  const mFollowRate = mTotalPrevHigh > 0 ? (mFollow / mTotalPrevHigh * 100) : null;
+
+  // ── 末尾ベースの遷移 ──
+  const suffixDay = {}; // suffix -> date -> 高設定があったか
+  allData.forEach(r => {
+    const suf = String(parseInt(r['台番号'])).slice(-1);
+    const d = String(r['日付']).substring(0,10);
+    if (!suffixDay[suf]) suffixDay[suf] = {};
+    if (isHighSetting(r)) suffixDay[suf][d] = true;
+  });
+  const suffixTransitions = [];
+  let sFollow = 0, sTotalPrevHigh = 0;
+  for (let i = 1; i < targetDates.length; i++) {
+    const prev = targetDates[i-1], cur = targetDates[i];
+    for (let s = 0; s <= 9; s++) {
+      const suf = String(s);
+      if (suffixDay[suf]?.[prev]) {
+        sTotalPrevHigh++;
+        const curHigh = !!suffixDay[suf]?.[cur];
+        if (curHigh) sFollow++;
+        suffixTransitions.push({ suf, prevDate: prev, curDate: cur, curHigh });
+      }
+    }
+  }
+  const sFollowRate = sTotalPrevHigh > 0 ? (sFollow / sTotalPrevHigh * 100) : null;
+
+  // ── サマリー表示 ──
+  const judge = (rate) => {
+    if (rate == null) return { text: '判定不可', color: 'var(--text2)' };
+    if (rate >= 60) return { text: '追従型（同じ場所に入りやすい）', color: 'var(--accent2)' };
+    if (rate <= 30) return { text: '回避型（前回と違う場所に動かす）', color: 'var(--accent3)' };
+    return { text: '混合型（はっきりした傾向なし）', color: 'var(--text)' };
+  };
+  const mJudge = judge(mFollowRate);
+  const sJudge = judge(sFollowRate);
+
+  const summaryCard = (title, rate, total, follow, jd) => `
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1rem">
+      <div style="font-size:11px;color:var(--text2);font-weight:700;margin-bottom:8px">${title}</div>
+      <div style="font-size:32px;font-weight:700;font-family:monospace;color:var(--text)">${rate!=null?rate.toFixed(1)+'%':'-'}</div>
+      <div style="font-size:11px;color:var(--text2);margin-top:2px">前回高設定 ${total}件中 ${follow}件 が継続</div>
+      <div style="font-size:12px;font-weight:700;color:${jd.color};margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">${jd.text}</div>
+    </div>`;
+
+  document.getElementById('rotation-summary').innerHTML = `
+    <div style="font-size:11px;color:var(--accent2);margin-bottom:12px">基準：${basisLabel}（${targetDates.length}回分・${targetDates[0]}〜${targetDates[targetDates.length-1]}）</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px">
+      ${summaryCard('台番号の追従率', mFollowRate, mTotalPrevHigh, mFollow, mJudge)}
+      ${summaryCard('末尾の追従率', sFollowRate, sTotalPrevHigh, sFollow, sJudge)}
+    </div>
+    <div style="font-size:11px;color:var(--text3);margin-top:12px;line-height:1.7">
+      ※追従率が高い＝前回高設定だった場所に今回も入りやすい（次回も同じ場所を狙う）。<br>
+      ※追従率が低い＝前回と違う場所に動かす店（次回は前回高設定だった場所を避ける）。
+    </div>`;
+
+  // ── 台番号ベース詳細テーブル（最新の遷移を上に） ──
+  const renderTransitionTable = (transitions, labelHead, isCorner) => {
+    if (!transitions.length) return '<div style="color:var(--text2);font-size:12px;padding:8px">追跡できる遷移がありません</div>';
+    const rows = transitions.slice().reverse().map(t => {
+      const cornerBadge = isCorner && isCorner(t) ? '<span class="badge high" style="margin-left:4px">角</span>' : '';
+      const resultBadge = t.curHigh
+        ? '<span style="color:var(--accent2);font-weight:700">●継続</span>'
+        : '<span style="color:var(--text3)">×外れ</span>';
+      return `<tr>
+        <td style="font-family:monospace;font-weight:700">${labelHead}${t.m!=null?t.m:t.suf}${cornerBadge}</td>
+        <td style="font-family:monospace;font-size:11px;color:var(--text2)">${t.prevDate.substring(5)}</td>
+        <td style="text-align:center">→</td>
+        <td style="font-family:monospace;font-size:11px;color:var(--text2)">${t.curDate.substring(5)}</td>
+        <td style="text-align:center">${resultBadge}</td>
+      </tr>`;
+    }).join('');
+    return `<div style="overflow-x:auto"><table class="data-table">
+      <thead><tr><th>対象</th><th>前回(高設定)</th><th></th><th>今回</th><th>結果</th></tr></thead>
+      <tbody>${rows}</tbody></table></div>`;
+  };
+
+  document.getElementById('rotation-machine-result').innerHTML =
+    renderTransitionTable(machineTransitions, '台', (t) => CORNER_MACHINES.includes(t.m));
+
+  document.getElementById('rotation-suffix-result').innerHTML =
+    renderTransitionTable(suffixTransitions, '末尾', null);
+}
+
+let adjacencyLiftCache = {};
+
+function renderAdjacency() {
+  const ZONES = getZones();
+  const CORNER_MACHINES = getCornerMachines();
+
+  // 台→日→高設定マップ
+  const machineDay = {};
+  const datesSet = new Set();
+  allData.forEach(r => {
+    const m = parseInt(r['台番号']);
+    const d = String(r['日付']).substring(0,10);
+    if (!machineDay[m]) machineDay[m] = {};
+    machineDay[m][d] = isHighSetting(r);
+    datesSet.add(d);
+  });
+  const allDatesA = [...datesSet].sort();
+
+  // ── 隣接リフト計算（隣接ペアを双方向で集計：角台/中間台の偏りを排除）──
+  let aHigh = 0, aHighNbrHigh = 0;   // focal=高設定
+  let bLow  = 0, bLowNbrHigh  = 0;   // focal=非高設定
+  const runsByDate = {};             // 日付 -> [{zoneLabel, machines, len}]
+
+  allDatesA.forEach(d => {
+    ZONES.forEach(z => {
+      const seq = z.machines;
+      const states = seq.map(m => (machineDay[m] && (d in machineDay[m])) ? machineDay[m][d] : null);
+
+      // 隣接ペア（i, i+1）を双方向で集計
+      for (let i = 0; i + 1 < seq.length; i++) {
+        const a = states[i], b = states[i+1];
+        if (a === null || b === null) continue;
+        if (a === true) { aHigh++; if (b === true) aHighNbrHigh++; }
+        else            { bLow++;  if (b === true) bLowNbrHigh++;  }
+        if (b === true) { aHigh++; if (a === true) aHighNbrHigh++; }
+        else            { bLow++;  if (a === true) bLowNbrHigh++;  }
+      }
+
+      // 連検出（2台以上連続の高設定）
+      let runStart = -1;
+      for (let i = 0; i <= seq.length; i++) {
+        const hi = (i < seq.length && states[i] === true);
+        if (hi && runStart === -1) runStart = i;
+        if (!hi && runStart !== -1) {
+          const len = i - runStart;
+          if (len >= 2) {
+            (runsByDate[d] = runsByDate[d] || []).push({ zoneLabel: z.label, machines: seq.slice(runStart, i), len });
+          }
+          runStart = -1;
+        }
+      }
+    });
+  });
+
+  const A = aHigh > 0 ? aHighNbrHigh / aHigh : 0;
+  const B = bLow  > 0 ? bLowNbrHigh  / bLow  : 0;
+  const lift = (B > 0) ? (A / B) : (A > 0 ? Infinity : 0);
+  const enough = aHigh >= 20 && bLow >= 20;
+
+  let verdict, vColor, vDesc;
+  if (!enough) {
+    verdict = 'データ不足'; vColor = 'var(--text2)';
+    vDesc = '判定に必要なサンプルがまだ足りません（隣接ペアの観測が各20件以上で安定します）。データが増えると判定できるようになります。';
+  } else if (lift === Infinity || lift >= 1.3) {
+    verdict = '固め置き傾向'; vColor = '#ff6b47';
+    vDesc = 'この店は、同じ日のなかで高設定を隣同士に固めて置くクセがあります。これは「置き方の性格」であって、特定の台が翌日に高設定化するという予測ではありません。実戦での使い方：当日ある台が高設定だと判明したとき「その隣も高設定の可能性が高い」という同日内の判断に使えます。';
+  } else if (lift <= 0.7) {
+    verdict = 'バラし傾向'; vColor = '#47c8ff';
+    vDesc = 'この店は、同じ日のなかで高設定を隣り合わせにしない（散らす）クセがあります。当日ある台が高設定でも「その隣は高設定でない可能性が高い」という同日内の判断に使えます。翌日の予測ではありません。';
+  } else {
+    verdict = '傾向なし'; vColor = 'var(--text2)';
+    vDesc = '隣接と高設定の間に、同じ日のなかで明確な関係は見られません。この機種では「隣の状態」は同日内の判断材料になりにくいです。';
+  }
+
+  // 後の「狙い目台」再設計で再利用するキャッシュ
+  adjacencyLiftCache[sheetName] = { lift, A, B, aHigh, bLow, enough, verdict };
+
+  // ── サマリー描画 ──
+  const liftStr = (lift === Infinity) ? '∞' : lift.toFixed(2);
+  document.getElementById('adjacency-summary').innerHTML =
+    '<div style="display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin-bottom:14px">' +
+      '<div style="font-size:40px;font-weight:700;font-family:monospace,monospace;color:' + vColor + '">' + liftStr + '</div>' +
+      '<div>' +
+        '<div style="font-size:16px;font-weight:700;color:' + vColor + '">' + verdict + '</div>' +
+        '<div style="font-size:11px;color:var(--text2)">隣接リフト（A÷B）</div>' +
+      '</div>' +
+    '</div>' +
+    '<div style="font-size:13px;color:var(--text);line-height:1.7;margin-bottom:14px">' + vDesc + '</div>' +
+    '<div style="display:flex;gap:10px;flex-wrap:wrap">' +
+      '<div style="flex:1;min-width:150px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:12px">' +
+        '<div style="font-size:11px;color:var(--accent3)">A：高設定台の隣も高設定だった率</div>' +
+        '<div style="font-size:22px;font-weight:700;font-family:monospace,monospace;color:var(--text)">' + (A*100).toFixed(1) + '%</div>' +
+        '<div style="font-size:10px;color:var(--text2)">' + aHighNbrHigh + '/' + aHigh + '（隣接ペア観測）</div>' +
+      '</div>' +
+      '<div style="flex:1;min-width:150px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:12px">' +
+        '<div style="font-size:11px;color:var(--text2)">B：非高設定台の隣が高設定だった率</div>' +
+        '<div style="font-size:22px;font-weight:700;font-family:monospace,monospace;color:var(--text)">' + (B*100).toFixed(1) + '%</div>' +
+        '<div style="font-size:10px;color:var(--text2)">' + bLowNbrHigh + '/' + bLow + '（隣接ペア観測）</div>' +
+      '</div>' +
+    '</div>' +
+    '<div style="font-size:11px;color:var(--text2);margin-top:12px;line-height:1.6">' +
+      '※ リフト＝A÷B。1.3以上で固め置き、0.7以下でバラし、中間は傾向なしと判定します。<br>' +
+      '※ 「隣」は同じ列で物理的に前後1台。隣接ペア単位で双方向に数えるため、角台と中間台の隣の数の差による偏りは出ません。<br>' +
+      '※ <b>この指標は「同じ日に高設定が隣り合うか」という置き方のクセを測るものです。翌日の予測そのものではありません。</b>翌日予測に使うには、このクセが「どこへ動くか」を見る時系列分析（④で実装予定）と組み合わせます。' +
+    '</div>';
+
+  // ── 連テーブル描画（新しい順）──
+  const runDates = Object.keys(runsByDate).sort().reverse();
+  if (runDates.length === 0) {
+    document.getElementById('adjacency-runs').innerHTML =
+      '<div style="color:var(--text2);font-size:13px;padding:8px">2台以上連続で高設定だった並びは見つかりませんでした。</div>';
+  } else {
+    let rows = '';
+    let shown = 0;
+    for (const d of runDates) {
+      const sp = isSpecialDay(d);
+      runsByDate[d].sort((x,y)=>y.len-x.len);
+      for (const run of runsByDate[d]) {
+        const cells = run.machines.map(m => {
+          const corner = CORNER_MACHINES.includes(m);
+          return '<span style="display:inline-block;background:rgba(255,107,71,0.18);border:1px solid #ff6b47;border-radius:4px;padding:2px 7px;margin:2px;font-family:monospace,monospace;font-size:12px;color:var(--text)">' + m + (corner ? '<span style="color:var(--accent3);font-size:9px"> 角</span>' : '') + '</span>';
+        }).join('');
+        rows +=
+          '<tr style="border-bottom:1px solid var(--border)">' +
+            '<td style="padding:8px 10px;white-space:nowrap;font-family:monospace,monospace;font-size:12px;color:var(--text2)">' + d + (sp ? '<br><span style="color:var(--accent3);font-size:10px">特定日</span>' : '') + '</td>' +
+            '<td style="padding:8px 10px;font-size:12px;color:var(--text2);white-space:nowrap">' + run.zoneLabel + '</td>' +
+            '<td style="padding:8px 10px">' + cells + '</td>' +
+            '<td style="padding:8px 10px;text-align:center;font-family:monospace,monospace;font-weight:700;color:#ff6b47">' + run.len + '台</td>' +
+          '</tr>';
+        shown++;
+      }
+      if (shown >= 80) break;
+    }
+    document.getElementById('adjacency-runs').innerHTML =
+      '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse">' +
+        '<thead><tr style="border-bottom:2px solid var(--border)">' +
+          '<th style="padding:8px 10px;text-align:left;font-size:11px;color:var(--text2)">日付</th>' +
+          '<th style="padding:8px 10px;text-align:left;font-size:11px;color:var(--text2)">列</th>' +
+          '<th style="padding:8px 10px;text-align:left;font-size:11px;color:var(--text2)">連続して高設定だった並び</th>' +
+          '<th style="padding:8px 10px;text-align:center;font-size:11px;color:var(--text2)">長さ</th>' +
+        '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+  }
+}
+
+let halltypeCache = {};
+
+function renderHalltype() {
+  const dayFilter = document.getElementById('halltype-filter').value; // special/normal/all
+  document.getElementById('halltype-filter').onchange = renderHalltype;
+
+  const rows = allData.filter(r => {
+    const ds = String(r['日付']).substring(0,10);
+    if (dayFilter === 'special' && !isSpecialDay(ds)) return false;
+    if (dayFilter === 'normal'  &&  isSpecialDay(ds)) return false;
+    return true;
+  });
+
+  const cornerSet = new Set(getCornerMachines());
+  const cornerDefined = cornerSet.size > 0;
+
+  let cTot=0,cHigh=0,ncTot=0,ncHigh=0,totAll=0,highAll=0;
+  const suf = {};
+  for (let i=0;i<10;i++) suf[i] = {tot:0,high:0};
+  const daySet = new Set();
+
+  rows.forEach(r => {
+    const m = parseInt(r['台番号']);
+    const hi = isHighSetting(r);
+    totAll++; if (hi) highAll++;
+    daySet.add(String(r['日付']).substring(0,10));
+    const s = parseInt(String(m).slice(-1));
+    if (cornerSet.has(m)) { cTot++; if (hi) cHigh++; }
+    else { ncTot++; if (hi) ncHigh++; suf[s].tot++; if (hi) suf[s].high++; }
+  });
+
+  const targetDays = daySet.size;
+  const overallRate = totAll > 0 ? highAll/totAll : 0;
+
+  // ── 角度 ──
+  const cornerRate    = cTot  > 0 ? cHigh/cTot   : 0;
+  const nonCornerRate = ncTot > 0 ? ncHigh/ncTot : 0;
+  const cornerLift = nonCornerRate > 0 ? cornerRate/nonCornerRate : (cornerRate>0?Infinity:0);
+  const cornerEnough = cornerDefined && cTot>=10 && ncTot>=10;
+  const cornerSE = (cornerEnough && nonCornerRate>0 && nonCornerRate<1) ? Math.sqrt(nonCornerRate*(1-nonCornerRate)/cTot) : 0;
+  const cornerZ = cornerSE>0 ? (cornerRate-nonCornerRate)/cornerSE : 0;
+  const cornerSignificant = cornerZ >= 1.96;
+
+  // ── 末尾度 ──
+  const MIN_SUF = 10;
+  const sufRows = [];
+  let maxSuf=-1, maxSufRate=0;
+  for (let i=0;i<10;i++) {
+    const d = suf[i];
+    if (d.tot === 0) continue;
+    const rate = d.high/d.tot;
+    const qualifies = d.tot >= MIN_SUF;
+    sufRows.push({s:i, rate, high:d.high, tot:d.tot, qualifies});
+    if (qualifies && rate > maxSufRate) { maxSufRate = rate; maxSuf = i; }
+  }
+  const sufBaseline = ncTot > 0 ? nonCornerRate : overallRate;
+  const suffixLift = (sufBaseline>0 && maxSuf>=0) ? maxSufRate/sufBaseline : 0;
+  const sufSE = (maxSuf>=0 && sufBaseline>0 && sufBaseline<1) ? Math.sqrt(sufBaseline*(1-sufBaseline)/suf[maxSuf].tot) : 0;
+  const suffixZ = sufSE>0 ? (maxSufRate-sufBaseline)/sufSE : 0;
+  const suffixSignificant = suffixZ >= 2.58;
+  const suffixEnough = maxSuf >= 0;
+
+  // ── 単品度 ──
+  const avgHighPerDay = targetDays > 0 ? highAll/targetDays : 0;
+
+  // ── 判定 ──
+  const enough = totAll >= 30 && targetDays >= 3;
+  const signals = [];
+  if (cornerEnough && cornerLift >= 1.5 && cornerSignificant) signals.push('角系');
+  if (suffixEnough && suffixLift >= 1.8 && suffixSignificant) signals.push('末尾系');
+
+  let verdict, vColor, vDesc;
+  if (!enough) {
+    verdict = 'データ不足'; vColor = 'var(--text2)';
+    vDesc = '判定に必要なデータが足りません（対象日が3日以上・観測30件以上で安定します）。対象を「全期間」に切り替えるか、データが増えるのを待ってください。';
+  } else if (signals.length === 0) {
+    verdict = '単品系（バラ）'; vColor = '#47ff8a';
+    vDesc = 'この機種は、角にも末尾にも偏りなく、少数の台がバラバラに高設定になる使われ方です。狙い目は1台ごとの個別判断が中心になります。';
+  } else if (signals.length === 1) {
+    verdict = signals[0]; vColor = (signals[0]==='角系') ? 'var(--accent3)' : '#e8ff47';
+    vDesc = (signals[0]==='角系')
+      ? 'この機種は、高設定が角台（島の端）に集まる使われ方です。角台を厚めに狙うのが有効になりやすいです。'
+      : 'この機種は、高設定が特定の末尾に集まる使われ方です。その末尾を絞って狙うのが有効になりやすいです。';
+  } else {
+    verdict = '複合（' + signals.join('＋') + '）'; vColor = '#ff6b47';
+    vDesc = 'この機種は、角台と末尾の両方に偏りが見られる複合タイプです。両方の条件を満たす台が特に有力候補になります。';
+  }
+
+  halltypeCache[sheetName] = { dayFilter, cornerLift, suffixLift, maxSuf, avgHighPerDay, verdict, enough };
+
+  // ── 判定結果カード描画 ──
+  const dayLabel = dayFilter==='special' ? '特定日' : dayFilter==='normal' ? '通常日' : '全期間';
+  document.getElementById('halltype-verdict').innerHTML =
+    '<div style="display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin-bottom:12px">' +
+      '<div style="font-size:30px;font-weight:700;color:' + vColor + '">' + verdict + '</div>' +
+      '<div style="font-size:11px;color:var(--text2)">' + dayLabel + '・' + targetDays + '日／' + totAll + '件・全体高設定率 ' + (overallRate*100).toFixed(1) + '%</div>' +
+    '</div>' +
+    '<div style="font-size:13px;color:var(--text);line-height:1.7">' + vDesc + '</div>' +
+    '<div style="font-size:11px;color:var(--text2);margin-top:12px;line-height:1.6">' +
+      '※ これは「この機種がこの店でどう使われているか」という置き方の診断です。翌日の予測そのものではありません。' +
+    '</div>';
+
+  // ── 角度カード ──
+  if (!cornerDefined) {
+    document.getElementById('halltype-corner').innerHTML =
+      '<div style="color:var(--text2);font-size:13px;padding:8px">この機種は角台が定義されていないため、角度は判定できません。</div>';
+  } else if (!cornerEnough) {
+    document.getElementById('halltype-corner').innerHTML =
+      '<div style="color:var(--text2);font-size:13px;padding:8px">角台 ' + cHigh + '/' + cTot + '件、非角台 ' + ncHigh + '/' + ncTot + '件。サンプルが少なく判定保留（各10件以上で安定）。</div>';
+  } else {
+    const liftStr = cornerLift===Infinity ? '∞' : cornerLift.toFixed(2);
+    const cornerHit = cornerLift >= 1.5 && cornerSignificant;
+    const sign = cornerHit ? '角系のサインあり（統計的に有意）' : (cornerLift >= 1.5 ? '倍率は高いが有意でない（サンプル不足の可能性）' : '角への偏りは弱い');
+    const sc = cornerHit ? 'var(--accent3)' : 'var(--text2)';
+    document.getElementById('halltype-corner').innerHTML =
+      '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px">' +
+        '<div style="flex:1;min-width:130px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:12px">' +
+          '<div style="font-size:11px;color:var(--accent3)">角台の高設定率</div>' +
+          '<div style="font-size:22px;font-weight:700;font-family:monospace,monospace;color:var(--text)">' + (cornerRate*100).toFixed(1) + '%</div>' +
+          '<div style="font-size:10px;color:var(--text2)">' + cHigh + '/' + cTot + '</div>' +
+        '</div>' +
+        '<div style="flex:1;min-width:130px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:12px">' +
+          '<div style="font-size:11px;color:var(--text2)">非角台の高設定率</div>' +
+          '<div style="font-size:22px;font-weight:700;font-family:monospace,monospace;color:var(--text)">' + (nonCornerRate*100).toFixed(1) + '%</div>' +
+          '<div style="font-size:10px;color:var(--text2)">' + ncHigh + '/' + ncTot + '</div>' +
+        '</div>' +
+      '</div>' +
+      '<div style="font-size:14px"><span style="color:var(--text2)">角度＝</span><b style="color:' + sc + ';font-family:monospace,monospace">' + liftStr + '倍</b> <span style="font-size:11px;color:var(--text2);font-family:monospace,monospace">(z=' + cornerZ.toFixed(1) + ')</span>　<span style="color:' + sc + '">' + sign + '</span></div>';
+  }
+
+  // ── 末尾度カード ──
+  if (!suffixEnough) {
+    document.getElementById('halltype-suffix').innerHTML =
+      '<div style="color:var(--text2);font-size:13px;padding:8px">末尾ごとのサンプルが少なく判定できません（各末尾10件以上必要）。</div>';
+  } else {
+    sufRows.sort((a,b)=>b.rate-a.rate);
+    const tableRows = sufRows.map(row => {
+      const isMax = row.s === maxSuf;
+      const dim = row.qualifies ? '' : 'opacity:0.45';
+      return '<tr style="border-bottom:1px solid var(--border);' + dim + '">' +
+        '<td style="padding:6px 10px;font-family:monospace,monospace;font-size:13px;color:' + (isMax?'#e8ff47':'var(--text)') + ';font-weight:' + (isMax?'700':'400') + '">末尾' + row.s + (isMax?' ★':'') + '</td>' +
+        '<td style="padding:6px 10px;text-align:right;font-family:monospace,monospace;font-size:13px;color:var(--text)">' + (row.rate*100).toFixed(1) + '%</td>' +
+        '<td style="padding:6px 10px;text-align:right;font-size:11px;color:var(--text2)">' + row.high + '/' + row.tot + (row.qualifies?'':' (少)') + '</td>' +
+      '</tr>';
+    }).join('');
+    const liftStr2 = suffixLift.toFixed(2);
+    const suffixHit = suffixLift >= 1.8 && suffixSignificant;
+    const sign2 = suffixHit ? '末尾系のサインあり（多重比較補正後も有意）' : (suffixLift >= 1.8 ? '倍率は高いが有意でない（偶然の偏りの可能性）' : '末尾への偏りは弱い');
+    const sc2 = suffixHit ? '#e8ff47' : 'var(--text2)';
+    document.getElementById('halltype-suffix').innerHTML =
+      '<div style="font-size:14px;margin-bottom:10px"><span style="color:var(--text2)">末尾度＝最も高い末尾' + maxSuf + '（' + (maxSufRate*100).toFixed(1) + '%）÷ 非角台平均（' + (sufBaseline*100).toFixed(1) + '%）＝</span><b style="color:' + sc2 + ';font-family:monospace,monospace">' + liftStr2 + '倍</b> <span style="font-size:11px;color:var(--text2);font-family:monospace,monospace">(z=' + suffixZ.toFixed(1) + ')</span>　<span style="color:' + sc2 + '">' + sign2 + '</span></div>' +
+      '<div style="font-size:10px;color:var(--text2);margin-bottom:8px">※ 角台の影響を除くため、末尾度は非角台のみで計算しています。</div>' +
+      '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse">' +
+        '<thead><tr style="border-bottom:2px solid var(--border)">' +
+          '<th style="padding:6px 10px;text-align:left;font-size:11px;color:var(--text2)">末尾</th>' +
+          '<th style="padding:6px 10px;text-align:right;font-size:11px;color:var(--text2)">高設定率</th>' +
+          '<th style="padding:6px 10px;text-align:right;font-size:11px;color:var(--text2)">件数</th>' +
+        '</tr></thead><tbody>' + tableRows + '</tbody></table></div>';
+  }
+
+  // ── 単品度カード ──
+  const noConc = signals.length === 0 && enough;
+  const singleColor = noConc ? '#47ff8a' : 'var(--text2)';
+  const singleMsg = noConc
+    ? '角度・末尾度ともに弱く、1日あたり平均 ' + avgHighPerDay.toFixed(1) + ' 台。バラして入れる単品系の特徴です。'
+    : '1日あたり平均 ' + avgHighPerDay.toFixed(1) + ' 台。' + (signals.length>0 ? '角または末尾に偏りがあるため、単品系ではありません。' : '');
+  document.getElementById('halltype-single').innerHTML =
+    '<div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">' +
+      '<div style="font-size:22px;font-weight:700;font-family:monospace,monospace;color:' + singleColor + '">' + avgHighPerDay.toFixed(1) + ' 台/日</div>' +
+      '<div style="font-size:11px;color:var(--text2)">対象日の1日あたり平均高設定台数</div>' +
+    '</div>' +
+    '<div style="font-size:13px;color:var(--text);line-height:1.7;margin-top:8px">' + singleMsg + '</div>';
+}
+
+// ── 直近トレンド×前回同種日（予測）──────────────────
+function parseDiffVal(v){ return parseFloat(String(v==null?'':v).replace(/,/g,'')) || 0; }
+
+function renderTrend() {
+  if (!allData.length) return;
+  renderTrendBody();
+}
+
+function renderTrendBody() {
+  const CORNER_MACHINES = getCornerMachines();
+
+  const allDates = [...new Set(allData.map(r=>String(r['日付']).substring(0,10)))].sort();
+  const machines = [...new Set(allData.map(r=>parseInt(r['台番号'])))].sort((a,b)=>a-b);
+
+  // 台→日→{high, diff}
+  const md = {};
+  allData.forEach(r=>{
+    const m = parseInt(r['台番号']); const d = String(r['日付']).substring(0,10);
+    if(!md[m]) md[m]={};
+    md[m][d] = { high: isHighSetting(r), diff: parseDiffVal(r['差枚']) };
+  });
+
+  const targetDates = allDates.filter(d => isSpecialDay(d));
+  const basisLabel = '特定日';
+
+  if (targetDates.length < 2) {
+    document.getElementById('trend-backtest').innerHTML = '<div style="color:var(--text2);font-size:13px;padding:8px">' + basisLabel + 'が2回分そろっていないため、答え合わせができません。</div>';
+    document.getElementById('trend-picks').innerHTML = '';
+    return;
+  }
+
+  // ヘルパ：対象日の直前3カレンダー日 / 前回同種日 / その日のワースト30%差枚
+  const prior3 = d => allDates.filter(x=>x<d).slice(-3);
+  const prevTarget = d => { const i = targetDates.indexOf(d); return i>0 ? targetDates[i-1] : null; };
+  function worst30(p3) {
+    if (!p3.length) return new Set();
+    const sums = machines.map(m=>{
+      let sum=0,has=false;
+      p3.forEach(pd=>{ if(md[m]?.[pd]){ sum+=md[m][pd].diff; has=true; } });
+      return {m,sum,has};
+    }).filter(x=>x.has);
+    sums.sort((a,b)=>a.sum-b.sum); // マイナス大きい順
+    const cut = Math.max(1, Math.floor(sums.length*0.3));
+    return new Set(sums.slice(0,cut).map(x=>x.m));
+  }
+
+  // ── バックテスト集計 ──
+  const S = { S1:{fh:0,fn:0,nh:0,nn:0}, S2:{fh:0,fn:0,nh:0,nn:0}, S3:{fh:0,fn:0,nh:0,nn:0} };
+  targetDates.forEach(d=>{
+    const p3 = prior3(d);
+    const pt = prevTarget(d);
+    const worstSet = worst30(p3);
+    machines.forEach(m=>{
+      const cur = md[m]?.[d];
+      if(!cur) return;
+      const hi = cur.high;
+      if(pt){ const f = !!(md[m]?.[pt]?.high); if(f){S.S1.fn++; if(hi)S.S1.fh++;} else {S.S1.nn++; if(hi)S.S1.nh++;} }
+      if(p3.length){ const f = p3.some(pd=>md[m]?.[pd]?.high); if(f){S.S2.fn++; if(hi)S.S2.fh++;} else {S.S2.nn++; if(hi)S.S2.nh++;} }
+      if(worstSet.size){ const f = worstSet.has(m); if(f){S.S3.fn++; if(hi)S.S3.fh++;} else {S.S3.nn++; if(hi)S.S3.nh++;} }
+    });
+  });
+
+  function metric(s){
+    const fRate = s.fn>0 ? s.fh/s.fn : 0;
+    const nRate = s.nn>0 ? s.nh/s.nn : 0;
+    const lift = nRate>0 ? fRate/nRate : (fRate>0?Infinity:0);
+    let z=0;
+    if(s.fn>0 && s.nn>0){
+      const pPool=(s.fh+s.nh)/(s.fn+s.nn);
+      const se=Math.sqrt(pPool*(1-pPool)*(1/s.fn+1/s.nn));
+      z = se>0 ? (fRate-nRate)/se : 0;
+    }
+    const enough = s.fn>=10 && s.nn>=10;
+    const significant = enough && z>=1.96;
+    return {fRate,nRate,lift,z,fn:s.fn,nn:s.nn,fh:s.fh,nh:s.nh,enough,significant};
+  }
+  const M = { S1:metric(S.S1), S2:metric(S.S2), S3:metric(S.S3) };
+
+  const sigInfo = {
+    S1:{name:'S1 前回もアツい',  desc:'前回の'+basisLabel+'に高設定だった台'},
+    S2:{name:'S2 最近アツい',    desc:'直近3日で1回でも高設定だった台'},
+    S3:{name:'S3 最近ボロ負け',  desc:'直近3日の差枚が機種内ワースト30%の台'},
+  };
+
+  // ── バックテスト描画 ──
+  let cards = '';
+  ['S1','S2','S3'].forEach(k=>{
+    const m = M[k];
+    let verdict, vc;
+    if(!m.enough){ verdict='データ不足'; vc='var(--text2)'; }
+    else if(m.significant && m.lift>=1.2){ verdict='本物の予兆 ✓'; vc='#47ff8a'; }
+    else if(m.significant && m.lift<=0.8){ verdict='逆効果（むしろ避ける）'; vc='#47c8ff'; }
+    else { verdict='効果なし（思い込み）'; vc='var(--text2)'; }
+    const liftStr = m.lift===Infinity?'∞':m.lift.toFixed(2);
+    cards +=
+      '<div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:14px;margin-bottom:10px">' +
+        '<div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px;margin-bottom:6px">' +
+          '<div style="font-size:14px;font-weight:700;color:var(--text)">' + sigInfo[k].name + '</div>' +
+          '<div style="font-size:13px;font-weight:700;color:' + vc + '">' + verdict + '</div>' +
+        '</div>' +
+        '<div style="font-size:11px;color:var(--text2);margin-bottom:8px">' + sigInfo[k].desc + '</div>' +
+        '<div style="display:flex;gap:16px;flex-wrap:wrap;font-size:12px">' +
+          '<div><span style="color:var(--text2)">該当台の高設定率 </span><b style="color:var(--text);font-family:monospace,monospace">' + (m.fRate*100).toFixed(1) + '%</b> <span style="color:var(--text2)">(' + m.fh + '/' + m.fn + ')</span></div>' +
+          '<div><span style="color:var(--text2)">非該当 </span><b style="color:var(--text);font-family:monospace,monospace">' + (m.nRate*100).toFixed(1) + '%</b> <span style="color:var(--text2)">(' + m.nh + '/' + m.nn + ')</span></div>' +
+          '<div><span style="color:var(--text2)">倍率 </span><b style="color:' + vc + ';font-family:monospace,monospace">' + liftStr + '倍</b> <span style="color:var(--text2)">(z=' + m.z.toFixed(1) + ')</span></div>' +
+        '</div>' +
+      '</div>';
+  });
+  document.getElementById('trend-backtest').innerHTML = cards +
+    '<div style="font-size:11px;color:var(--text2);margin-top:4px;line-height:1.6">※ 倍率＝該当台の高設定率÷非該当の高設定率。1.2倍以上かつ統計的に有意（z≥1.96）で「本物」と判定。サンプル不足や偶然の範囲は採用しません。</div>';
+
+  // ── 次の対象日の狙い目候補 ──
+  const lastTarget = targetDates[targetDates.length-1];
+  const p3now = allDates.slice(-3);
+  const worstNow = worst30(p3now);
+  const validSignals = ['S1','S2','S3'].filter(k => M[k].significant && M[k].lift>=1.2);
+
+  if (validSignals.length === 0) {
+    document.getElementById('trend-picks').innerHTML =
+      '<div style="color:var(--text2);font-size:13px;padding:8px;line-height:1.7">答え合わせで「本物」と判定できた予兆がありませんでした。この基準（' + basisLabel + '）では、3つの予兆はいずれも次の狙い目を信頼できるほど当てていません。データが増えると変わる可能性があります。</div>';
+    return;
+  }
+
+  const picks = [];
+  machines.forEach(m=>{
+    const hits = [];
+    if(validSignals.includes('S1') && md[m]?.[lastTarget]?.high) hits.push('S1');
+    if(validSignals.includes('S2') && p3now.some(pd=>md[m]?.[pd]?.high)) hits.push('S2');
+    if(validSignals.includes('S3') && worstNow.has(m)) hits.push('S3');
+    if(hits.length) picks.push({m, hits});
+  });
+  picks.sort((a,b)=> b.hits.length-a.hits.length || a.m-b.m);
+
+  if (picks.length === 0) {
+    document.getElementById('trend-picks').innerHTML =
+      '<div style="color:var(--text2);font-size:13px;padding:8px">本物の予兆に当てはまる台が現時点でありません。</div>';
+    return;
+  }
+
+  const sigBadge = { S1:'#47ff8a', S2:'#e8ff47', S3:'#47c8ff' };
+  const rows = picks.map(p=>{
+    const corner = CORNER_MACHINES.includes(p.m);
+    const badges = p.hits.map(h=>'<span style="display:inline-block;background:rgba(255,255,255,0.06);border:1px solid '+sigBadge[h]+';color:'+sigBadge[h]+';border-radius:4px;padding:1px 6px;margin:1px;font-size:11px">'+sigInfo[h].name+'</span>').join('');
+    return '<tr style="border-bottom:1px solid var(--border)">' +
+      '<td style="padding:8px 10px;font-family:monospace,monospace;font-size:14px;font-weight:700;color:var(--text);white-space:nowrap">' + p.m + (corner?'<span style="color:var(--accent3);font-size:9px"> 角</span>':'') + '</td>' +
+      '<td style="padding:8px 10px;text-align:center;font-family:monospace,monospace;font-weight:700;color:var(--accent2)">' + p.hits.length + '</td>' +
+      '<td style="padding:8px 10px">' + badges + '</td>' +
+    '</tr>';
+  }).join('');
+  document.getElementById('trend-picks').innerHTML =
+    '<div style="font-size:11px;color:var(--text2);margin-bottom:8px">最新の' + basisLabel + '（' + lastTarget + '）と直近3日を起点に判定。該当予兆が多い台ほど上位です。</div>' +
+    '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse">' +
+      '<thead><tr style="border-bottom:2px solid var(--border)">' +
+        '<th style="padding:8px 10px;text-align:left;font-size:11px;color:var(--text2)">台番号</th>' +
+        '<th style="padding:8px 10px;text-align:center;font-size:11px;color:var(--text2)">該当数</th>' +
+        '<th style="padding:8px 10px;text-align:left;font-size:11px;color:var(--text2)">当てはまった本物の予兆</th>' +
+      '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+}
+
+// ── 傾向ドリフト（店のクセの週次推移）──────────────────────────────
+const DRIFT_METRICS = [
+  { key:'overallRate',       title:'全体高設定率',      sub:'店の強気度',                  color:'#e8ff47', mul:100, unit:'%', ref:null, thr:6 },
+  { key:'specialNormalDiff', title:'特定日−通常日の差',  sub:'メリハリ (pt)',               color:'#47c8ff', mul:100, unit:'pt', ref:0,   thr:8 },
+  { key:'cornerLift',        title:'角台の効き',         sub:'角台率÷非角台率 (1.0=差なし)', color:'#ff6b47', mul:1,   unit:'x', ref:1,   thr:0.3 },
+  { key:'suffixLift',        title:'末尾の効き',         sub:'最強末尾÷平均 (1.0=差なし)',   color:'#ffb347', mul:1,   unit:'x', ref:1,   thr:0.3 },
+  { key:'holdRate',          title:'据え置き率',         sub:'特定日高設定→翌日も高設定',    color:'#47ff8a', mul:100, unit:'%', ref:null, thr:10 },
+];
+const driftCharts = {};
+function driftNum(v){ if(v==null) return 0; const n=parseFloat(String(v).replace(/,/g,'')); return isNaN(n)?0:n; }
+function driftFmt(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function driftWeekStart(ds){ const d=parseLocalDate(ds); const wd=d.getDay(); d.setDate(d.getDate()+(wd===0?-6:1-wd)); return driftFmt(d); }
+function driftNextDay(ds){ const d=parseLocalDate(ds); d.setDate(d.getDate()+1); return driftFmt(d); }
+
+// 実データから週次5指標を計算（記述的。薄い週はnullで正直に沈黙）
+function computeWeeklyDrift(data){
+  const minRate=8, minSide=4, minHold=4;
+  const corners=getCornerMachines()||[];
+  const cornerSet={}; corners.forEach(c=>cornerSet[parseInt(c)]=true);
+  const rows=data.filter(r=>driftNum(r['総回転数'])>=100);
+  // 台×日マップ（据え置き判定）
+  const map={};
+  rows.forEach(r=>{ const m=parseInt(r['台番号']), d=String(r['日付']).substring(0,10); (map[m]=map[m]||{})[d]=r; });
+  // 週束ね
+  const weeks={};
+  rows.forEach(r=>{ const d=String(r['日付']).substring(0,10), w=driftWeekStart(d); (weeks[w]=weeks[w]||[]).push(r); });
+  return Object.keys(weeks).sort().map(w=>{
+    const wr=weeks[w], present=wr.length, high=wr.filter(r=>isHighSetting(r)).length;
+    // ①全体率
+    const overallRate = present>=minRate ? high/present : null;
+    // ③角台lift
+    const cRows=wr.filter(r=>cornerSet[parseInt(r['台番号'])]);
+    const nRows=wr.filter(r=>!cornerSet[parseInt(r['台番号'])]);
+    const cHigh=cRows.filter(r=>isHighSetting(r)).length, nHigh=nRows.filter(r=>isHighSetting(r)).length;
+    let cornerLift=null;
+    if(corners.length && cRows.length>=minSide && nRows.length>=minSide){
+      const cr=cHigh/cRows.length, nr=nHigh/nRows.length;
+      cornerLift = nr>0 ? cr/nr : null;
+    }
+    // ④末尾lift
+    let suffixLift=null;
+    if(nRows.length>=minRate){
+      const bySuf={};
+      nRows.forEach(r=>{ const s=parseInt(r['台番号'])%10; (bySuf[s]=bySuf[s]||{n:0,h:0}); bySuf[s].n++; if(isHighSetting(r)) bySuf[s].h++; });
+      const navg=nHigh/nRows.length; let best=null;
+      Object.keys(bySuf).forEach(s=>{ const o=bySuf[s]; if(o.n<minSide) return; const rate=o.h/o.n; if(best==null||rate>best) best=rate; });
+      if(best!=null && navg>0) suffixLift=best/navg;
+    }
+    // ⑤据え置き率
+    let holdPairs=0, holdHeld=0;
+    wr.forEach(r=>{
+      const d=String(r['日付']).substring(0,10);
+      if(!isSpecialDay(d) || !isHighSetting(r)) return;
+      const m=parseInt(r['台番号']); const nx=map[m] && map[m][driftNextDay(d)];
+      if(!nx) return; holdPairs++; if(isHighSetting(nx)) holdHeld++;
+    });
+    const holdRate = holdPairs>=minHold ? holdHeld/holdPairs : null;
+    // ②特定日−通常日差
+    const spRows=wr.filter(r=>isSpecialDay(String(r['日付']).substring(0,10)));
+    const noRows=wr.filter(r=>!isSpecialDay(String(r['日付']).substring(0,10)));
+    let specialNormalDiff=null;
+    if(spRows.length>=minSide && noRows.length>=minSide){
+      specialNormalDiff = spRows.filter(r=>isHighSetting(r)).length/spRows.length - noRows.filter(r=>isHighSetting(r)).length/noRows.length;
+    }
+    return { week:w, present, overallRate, cornerLift, suffixLift, holdRate, specialNormalDiff };
+  });
+}
+
+function driftSmooth(a){ return a.map((v,i)=>{ const w=[a[i-1],a[i],a[i+1]].filter(x=>x!=null); return w.length?w.reduce((s,x)=>s+x,0)/w.length:null; }); }
+function driftSeries(SER,k,mul){ return SER.map(r=>r[k]==null?null:r[k]*(mul||1)); }
+
+// 直近の動き（raw値で recent3 vs before3）
+function driftMovement(SER,m){
+  const arr=SER.map(r=>r[m.key]).filter(x=>x!=null);
+  if(arr.length<6) return {cls:'nd',txt:'データ不足'};
+  const avg=a=>a.reduce((s,x)=>s+x,0)/a.length;
+  const d=(avg(arr.slice(-3))-avg(arr.slice(-6,-3)))*m.mul;
+  const arrow=d>0?'↑':'↓', val=(d>0?'+':'')+d.toFixed(m.unit==='x'?2:0)+m.unit;
+  if(Math.abs(d)>=m.thr) return {cls:'move',txt:`直近 ${val} ${arrow} 動きあり`};
+  return {cls:'flat',txt:`直近 ${val} → 横ばい`};
+}
+
+// ピン（店ごとにlocalStorage保存）
+function driftPinKey(){ return 'drift_pins_'+sheetName; }
+function driftGetPins(){ try{ return new Set(JSON.parse(localStorage.getItem(driftPinKey())||'[]')); }catch(e){ return new Set(); } }
+function driftSetPins(set){ try{ localStorage.setItem(driftPinKey(), JSON.stringify([...set])); }catch(e){} }
+
+function driftCardHtml(SER,m,pins){
+  const mv=driftMovement(SER,m), on=pins.has(m.key)?'on':'';
+  return `<div class="drift-card ${pins.has(m.key)?'pinned':''}">
+    <div class="drift-mhead">
+      <div class="drift-mtitle">${m.title}<small>${m.sub}</small></div>
+      <button class="drift-pin-btn ${on}" data-k="${m.key}" title="上に固定">📌</button>
+    </div>
+    <span class="drift-chip ${mv.cls}">${mv.txt}</span>
+    <div class="drift-chart-wrap"><canvas id="drift_cv_${m.key}"></canvas></div>
+  </div>`;
+}
+
+function driftDrawChart(SER,m,labels){
+  const useSmooth=document.getElementById('drift-smooth').checked;
+  let d=driftSeries(SER,m.key,m.mul); if(useSmooth) d=driftSmooth(d);
+  const ds=[{ label:m.title, data:d, borderColor:m.color, backgroundColor:m.color+'22',
+    borderWidth:2.2, pointRadius:d.map(v=>v==null?0:3), pointBackgroundColor:m.color, tension:.25, spanGaps:false, fill:true }];
+  if(m.ref!=null) ds.push({ label:'ref', data:labels.map(()=>m.ref), borderColor:'#555', borderWidth:1, borderDash:[4,4], pointRadius:0, fill:false });
+  if(driftCharts[m.key]) driftCharts[m.key].destroy();
+  driftCharts[m.key]=new Chart(document.getElementById('drift_cv_'+m.key).getContext('2d'),{
+    type:'line', data:{labels,datasets:ds},
+    options:{ responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{display:false}, tooltip:{callbacks:{label:c=>c.parsed.y==null?'データ不足':(c.parsed.y.toFixed(m.unit==='x'?2:1)+m.unit)}} },
+      scales:{ x:{ticks:{color:'#666',font:{size:9},maxRotation:0,autoSkip:true,maxTicksLimit:8},grid:{color:'#1a1a1a'}},
+               y:{ticks:{color:'#666',font:{size:10},callback:v=>v+m.unit},grid:{color:'#1a1a1a'}} } }
+  });
+}
+
+function driftDiagnose(SER){
+  const valid=SER.filter(r=>r.overallRate!=null);
+  if(valid.length<6) return '💬 週次で傾向を判定するにはデータが不足しています（有効週が6週未満）。';
+  const avg=(a,k)=>a.reduce((s,x)=>s+x[k],0)/a.length;
+  const now=avg(valid.slice(-3),'overallRate'), bef=avg(valid.slice(-6,-3),'overallRate'), d=now-bef;
+  const diffValid=SER.filter(r=>r.specialNormalDiff!=null).slice(-3);
+  let msg = Math.abs(d)<0.06 ? `直近3週：全体の高設定率は<b>安定</b>（約${(now*100).toFixed(0)}%）。`
+    : `直近3週：全体の高設定率が${(bef*100).toFixed(0)}%→${(now*100).toFixed(0)}%へ<b>${d>0?'上昇':'低下'}</b>（傾向が変化した可能性）。`;
+  if(diffValid.length){
+    const diffNow=avg(diffValid,'specialNormalDiff')*100;
+    msg += ` 特定日−通常日の差は直近<b>${diffNow.toFixed(0)}pt</b>`;
+    msg += diffNow<8 ? '（＝メリハリがほぼ無い＝全台フラットに入れる傾向）。' : '（＝特定日にメリハリを付ける傾向）。';
+  }
+  return '💬 '+msg;
+}
+
+let driftSmoothBound=false;
+function renderDrift(){
+  if(!allData.length) return;
+  const SER=computeWeeklyDrift(allData);
+  const machineCount=[...new Set(allData.map(r=>parseInt(r['台番号'])))].length;
+  document.getElementById('drift-sub').textContent =
+    sheetName+'（'+machineCount+'台・'+SER.length+'週）の店のクセの推移。段差＝方針が変わった可能性を答え合わせしてください。';
+  document.getElementById('drift-diag').innerHTML = driftDiagnose(SER);
+
+  if(SER.length===0){
+    document.getElementById('drift-pinned-section').style.display='none';
+    document.getElementById('drift-unpinned-row').innerHTML='<div style="font-size:12px;color:var(--text3);padding:8px">データがありません。</div>';
+    return;
+  }
+  const labels=SER.map(r=>r.week.substring(5));
+
+  function paint(){
+    const pins=driftGetPins();
+    const pinned=DRIFT_METRICS.filter(m=>pins.has(m.key));
+    const others=DRIFT_METRICS.filter(m=>!pins.has(m.key));
+    document.getElementById('drift-pinned-section').style.display = pinned.length ? '' : 'none';
+    document.getElementById('drift-pinned-row').innerHTML = pinned.map(m=>driftCardHtml(SER,m,pins)).join('');
+    document.getElementById('drift-others-label').textContent = pinned.length ? 'その他の指標' : 'すべての指標';
+    document.getElementById('drift-unpinned-row').innerHTML = others.length
+      ? others.map(m=>driftCardHtml(SER,m,pins)).join('')
+      : '<div style="font-size:12px;color:var(--text3);padding:8px">（全指標をピン留め中）</div>';
+    DRIFT_METRICS.forEach(m=>driftDrawChart(SER,m,labels));
+    document.querySelectorAll('.drift-pin-btn').forEach(b=>b.onclick=()=>{
+      const k=b.dataset.k, pn=driftGetPins();
+      pn.has(k)?pn.delete(k):pn.add(k); driftSetPins(pn); paint();
+    });
+  }
+  paint();
+  if(!driftSmoothBound){
+    document.getElementById('drift-smooth').addEventListener('change', ()=>renderDrift());
+    driftSmoothBound=true;
+  }
+}
+
+// ── ⑤ 特定日翌日 据え置き＋ズラし分析 ──────────────────────
+// 計算コアは carryover_core.js（モジュール版）とバイト一致。deps配線のみアプリ用。
+function carryoverNextDay(ds) {
+  const d = parseLocalDate(ds); d.setDate(d.getDate() + 1);
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+function carryoverReachesTier(row) {
+  // isHighSetting と同じ基準解決（現在シートの criteria）で「最低段階の回転数に届くか」を判定
+  const rotation = parseFloat(row['総回転数']) || 0;
+  const tiers = (criteria && criteria.tiers) ? criteria.tiers : [];
+  // 大東洋固有：criteria は tiers を持たないフラット構造のため、ここは常にこの枝を通る。
+  // rotation>0（＝ゼロ稼働のみ除外）は判定不可フィルタとして緩すぎるため、rotation>=100
+  // （＝実質稼働していない薄い翌日を判定不可として除外）に引き上げる。グラン本店は tiers を
+  // 持つため minRot 枝を通り、この改変の影響を受けない（大東洋固有の意図的逸脱）。
+  if (!tiers.length) return rotation >= 100;
+  const minRot = Math.min.apply(null, tiers.map(t => t.rotation));
+  return rotation >= minRot;
+}
+function carryoverNeighborsOf(no) {
+  // 島の並び（getZones の machines 配列）上で前後の台番号
+  const zones = getZones();
+  for (const z of zones) {
+    const i = z.machines.indexOf(parseInt(no));
+    if (i < 0) continue;
+    const r = [];
+    if (i > 0) r.push(z.machines[i - 1]);
+    if (i < z.machines.length - 1) r.push(z.machines[i + 1]);
+    return r;
+  }
+  return [];
+}
+
+  function computeCarryover(data, deps, opts) {
+    const {
+      isHigh, reachesTier, isSpecial, nextDate, diffOf, machineNo, neighborsOf
+    } = deps;
+    const o = opts || {};
+    const MIN_PAIRS = o.minPairs != null ? o.minPairs : 4;   // 有効な特定日→翌日ペア（層）の最低数
+    const MIN_DETERMINED = o.minDetermined != null ? o.minDetermined : 8; // 判定できた台の最低数
+    const MIN_TIER = o.minTier != null ? o.minTier : 4;      // 差枚各層の最低サンプル
+
+    // 日付→(台番号→row) の索引
+    const byDate = {};
+    data.forEach(r => {
+      const ds = String(r['日付']).substring(0, 10);
+      (byDate[ds] || (byDate[ds] = {}))[machineNo(r)] = r;
+    });
+    const dates = Object.keys(byDate).sort();
+    const dateSet = new Set(dates);
+
+    // 翌日ごとの全体状況（MH層）を先に算出（active＝翌日に判定土俵へ乗った台）
+    function dayOverall(ds) {
+      const rows = Object.values(byDate[ds]);
+      let N = 0, hi = 0;
+      rows.forEach(r => {
+        if (reachesTier(r)) { N++; if (isHigh(r)) hi++; }
+      });
+      return { N, hi };
+    }
+
+    // 特定日→翌日ペアを収集
+    const records = [];   // {date, machine, diff, status:'carried'|'notcarried'|'undetermined'}
+    const strata = [];    // MH層： {nd, N, hi, n1, a}
+    let usedSpecialDays = 0;
+
+    dates.forEach(ds => {
+      if (!isSpecial(ds)) return;
+      const nd = nextDate(ds);
+      if (!dateSet.has(nd)) return;          // 翌日データが無い特定日はスキップ
+      usedSpecialDays++;
+
+      const ov = dayOverall(nd);             // 翌日全体（層）
+      const todays = byDate[ds];
+      const highMachines = Object.keys(todays)
+        .map(k => parseInt(k))
+        .filter(no => isHigh(todays[no]));
+
+      let n1 = 0, a = 0;
+      highMachines.forEach(no => {
+        const dRow = todays[no];
+        const nRow = byDate[nd][no];
+        const diff = diffOf(dRow);
+        if (!nRow || !reachesTier(nRow)) {
+          records.push({ date: ds, machine: no, diff, status: 'undetermined' });
+          return;
+        }
+        const carried = isHigh(nRow);
+        n1++; if (carried) a++;
+        records.push({ date: ds, machine: no, diff, status: carried ? 'carried' : 'notcarried', nd });
+      });
+
+      if (ov.N >= 2 && ov.hi >= 1 && n1 >= 1) {
+        strata.push({ nd, N: ov.N, hi: ov.hi, n1, a });
+      }
+    });
+
+    const carriedRecs = records.filter(r => r.status === 'carried');
+    const notCarriedRecs = records.filter(r => r.status === 'notcarried');
+    const undetermined = records.filter(r => r.status === 'undetermined').length;
+    const determined = carriedRecs.length + notCarriedRecs.length;
+
+    // データ不足チェック
+    const insufficient = (strata.length < MIN_PAIRS) || (determined < MIN_DETERMINED);
+
+    // 据え置き率
+    const carryoverRate = determined > 0 ? carriedRecs.length / determined : null;
+
+    // MH層別：ΣA, ΣE, ΣV
+    let sumA = 0, sumE = 0, sumV = 0, sumHi = 0, sumN = 0;
+    strata.forEach(s => {
+      const n0 = s.N - s.n1;
+      sumA += s.a;
+      sumE += s.n1 * s.hi / s.N;
+      sumV += (s.n1 * n0 * s.hi * (s.N - s.hi)) / (s.N * s.N * (s.N - 1));
+      sumHi += s.hi; sumN += s.N;
+    });
+    const baseline = sumN > 0 ? sumHi / sumN : null;          // 翌日全体高設定率（層加重）
+    const lift = sumE > 0 ? sumA / sumE : null;               // 据え置き率÷期待
+    const z = sumV > 0 ? (sumA - sumE) / Math.sqrt(sumV) : null;
+    const significant = (z != null && lift != null && lift > 1 && z >= 1.96);
+
+    // 差枚3分割（判定できた台のみ・差枚降順で3等分）
+    const detRecs = records.filter(r => r.status === 'carried' || r.status === 'notcarried')
+      .slice().sort((x, y) => y.diff - x.diff);
+    const tiers = [];
+    if (detRecs.length >= 3) {
+      const size = Math.floor(detRecs.length / 3);
+      const rem = detRecs.length - size * 3;
+      // 上位・中位・下位に配分（余りは上位から）
+      const bounds = [
+        [0, size + (rem > 0 ? 1 : 0)],
+      ];
+      const midStart = bounds[0][1];
+      const midEnd = midStart + size + (rem > 1 ? 1 : 0);
+      bounds.push([midStart, midEnd]);
+      bounds.push([midEnd, detRecs.length]);
+      const labels = ['上位（好調で終い）', '中位', '下位（凹んで終い）'];
+      bounds.forEach((b, i) => {
+        const seg = detRecs.slice(b[0], b[1]);
+        const c = seg.filter(r => r.status === 'carried').length;
+        tiers.push({
+          label: labels[i],
+          n: seg.length,
+          carried: c,
+          rate: seg.length > 0 ? c / seg.length : null,
+          thin: seg.length < MIN_TIER,
+          diffRange: seg.length ? [seg[seg.length - 1].diff, seg[0].diff] : null,
+        });
+      });
+    }
+
+    // 素の「新規高設定率」p_new：翌日に高設定 かつ その前の特定日には高設定でなかった台の割合。
+    // ＝ランダムな隣が新規に光る背景確率。ズラし率の当て馬に使う。
+    let newlyHigh = 0, activeNext = 0;
+    strata.forEach(s => {
+      const dayNext = byDate[s.nd];
+      // s.nd の前の特定日を逆算（nd-1）
+      const prevD = (() => { const d = new Date(s.nd + 'T00:00:00'); d.setDate(d.getDate() - 1);
+        return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); })();
+      const dayPrev = byDate[prevD] || {};
+      Object.values(dayNext).forEach(r => {
+        if (!reachesTier(r)) return;
+        activeNext++;
+        const no = machineNo(r);
+        const wasHigh = !!(dayPrev[no] && isHigh(dayPrev[no]));
+        if (isHigh(r) && !wasHigh) newlyHigh++;
+      });
+    });
+    const pNew = activeNext > 0 ? newlyHigh / activeNext : null;
+
+    // ズラし（B）：据え置かれなかった台の隣が翌日に新規高設定か
+    // 「新規」＝翌日に高設定 かつ 当日は高設定でなかった隣（同日固め置きの二重計上を避ける）
+    let shiftHit = 0, expShiftSum = 0;
+    notCarriedRecs.forEach(r => {
+      const nd = r.nd;
+      const dayToday = byDate[r.date];
+      const dayNext = byDate[nd];
+      const neigh = neighborsOf(r.machine) || [];
+      let hit = false, judgeableNeighbors = 0;
+      neigh.forEach(nno => {
+        const nRowNext = dayNext[nno];
+        const nRowToday = dayToday[nno];
+        if (!nRowNext || !reachesTier(nRowNext)) return; // 隣も判定不可ならカウント外
+        judgeableNeighbors++;
+        const neighHighNext = isHigh(nRowNext);
+        const neighHighToday = !!(nRowToday && isHigh(nRowToday));
+        if (neighHighNext && !neighHighToday) hit = true; // 新規高設定の隣が居る
+      });
+      if (hit) shiftHit++;
+      // この台の隣がランダムなら「少なくとも1つが新規高設定」になる期待確率
+      if (pNew != null && judgeableNeighbors > 0) {
+        expShiftSum += 1 - Math.pow(1 - pNew, judgeableNeighbors);
+      }
+    });
+    const shiftRate = notCarriedRecs.length > 0 ? shiftHit / notCarriedRecs.length : null;
+    const expectedShiftRate = notCarriedRecs.length > 0 ? expShiftSum / notCarriedRecs.length : null;
+    // 台 or 隣で残った率（据え置き成功 ＋ 据え置き失敗だが隣にズレた）÷ 判定できた台
+    const residualRate = determined > 0 ? (carriedRecs.length + shiftHit) / determined : null;
+
+    // 候補台リスト：直近の特定日の高設定台を、入った差枚層の据え置き率つきで
+    let candidateDay = null, candidates = [];
+    for (let i = dates.length - 1; i >= 0; i--) {
+      if (isSpecial(dates[i]) && dateSet.has(nextDate(dates[i]))) { candidateDay = dates[i]; break; }
+    }
+    if (candidateDay) {
+      const todays = byDate[candidateDay];
+      const highs = Object.keys(todays).map(k => parseInt(k)).filter(no => isHigh(todays[no]));
+      // その日の高設定台を差枚降順に並べ、3分割の閾値で層を割り当て
+      const withDiff = highs.map(no => ({ no, diff: diffOf(todays[no]) })).sort((a, b) => b.diff - a.diff);
+      const size = Math.max(1, Math.floor(withDiff.length / 3));
+      withDiff.forEach((x, idx) => {
+        let tierIdx = idx < size ? 0 : (idx < size * 2 ? 1 : 2);
+        const tierRate = tiers[tierIdx] ? tiers[tierIdx].rate : null;
+        candidates.push({ machine: x.no, diff: x.diff, tierIdx, tierRate });
+      });
+    }
+
+    return {
+      insufficient,
+      usedSpecialDays, pairs: strata.length,
+      determined, undetermined,
+      carried: carriedRecs.length, notCarried: notCarriedRecs.length,
+      carryoverRate, baseline, lift, z, significant,
+      tiers,
+      shift: { shiftHit, shiftRate, expectedShiftRate, pNew, residualRate,
+               notCarried: notCarriedRecs.length },
+      candidateDay, candidates,
+    };
+  }
+
+function renderCarryover() {
+  const wrap = document.getElementById('carryover-body');
+  const diag = document.getElementById('carryover-diag');
+  if (!wrap || !diag) return;
+  if (!allData || !allData.length) {
+    diag.innerHTML = 'データを読み込むと、特定日翌日の据え置き傾向をここに表示します。';
+    wrap.innerHTML = '';
+    return;
+  }
+  const deps = {
+    isHigh: (row) => isHighSetting(row),
+    reachesTier: carryoverReachesTier,
+    isSpecial: (ds) => isSpecialDay(ds),
+    nextDate: carryoverNextDay,
+    diffOf: (row) => parseFloat(row['差枚']) || 0,
+    machineNo: (row) => parseInt(row['台番号']),
+    neighborsOf: carryoverNeighborsOf,
+  };
+  const R = computeCarryover(allData, deps);
+  const pct = v => v == null ? '—' : (v * 100).toFixed(1) + '%';
+  const num = v => v == null ? '—' : v.toFixed(2);
+
+  // データ不足なら正直に沈黙
+  if (R.insufficient) {
+    diag.innerHTML = '<b>まだ判定できません。</b> 特定日→翌日ペア ' + R.pairs + '組・判定できた台 ' + R.determined +
+      '台では、据え置き傾向を統計的に語るにはデータが薄すぎます（判定不可 ' + R.undetermined + '台）。データが貯まると結論が出ます。';
+    wrap.innerHTML = '';
+    return;
+  }
+
+  // 結論バナー
+  diag.innerHTML = R.significant
+    ? '<b>据え置き狙いが有効な傾向。</b> 特定日の高設定台は翌日 <b>' + pct(R.carryoverRate) + '</b> の割合で据え置かれています（翌日の全体高設定率 ' +
+      pct(R.baseline) + ' ／ lift ' + num(R.lift) + '・z ' + num(R.z) + '）。偶然では説明しにくい水準です。'
+    : '据え置き率 <b>' + pct(R.carryoverRate) + '</b>（翌日の全体高設定率 ' + pct(R.baseline) + ' ／ z ' + num(R.z) +
+      '）。<b>統計的に有意な据え置き傾向は今のところ確認できません。</b>';
+
+  const sigBadge = R.significant
+    ? '<span class="badge" style="background:rgba(71,255,138,.2);color:var(--success)">有意</span>'
+    : '<span class="badge" style="background:var(--surface3);color:var(--text2)">非有意</span>';
+
+  let html = '';
+
+  // ① 据え置き率 vs ベースライン
+  html += '<div class="card"><div class="card-title">据え置き率 vs 翌日ベースライン ' + sigBadge + '</div>';
+  html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">';
+  html += statBox('据え置き率', pct(R.carryoverRate), 'var(--accent)');
+  html += statBox('翌日の全体率', pct(R.baseline), 'var(--text2)');
+  html += statBox('lift（率÷期待）', num(R.lift), R.lift != null && R.lift > 1 ? 'var(--success)' : 'var(--text2)');
+  html += statBox('z値（≥1.96で有意）', num(R.z), R.significant ? 'var(--success)' : 'var(--text2)');
+  html += '</div>';
+  html += '<div style="font-size:11px;color:var(--text2);margin-top:12px;line-height:1.7">' +
+    '特定日→翌日ペア <b style="color:var(--text)">' + R.pairs + '組</b>／判定できた台 <b style="color:var(--text)">' + R.determined + '台</b>' +
+    '（据え置き ' + R.carried + '・非据え置き ' + R.notCarried + '）／回転不足で判定不可 <b style="color:var(--warning)">' + R.undetermined + '台</b>（分母から除外）。<br>' +
+    '※ 翌日ごとに全体率で条件を揃えて比較（Mantel-Haenszel層別）。甘い翌日が偶然多かっただけの水増しを排除しています。' +
+    '</div></div>';
+
+  // ② 差枚3分割
+  if (R.tiers.length === 3) {
+    const best = R.tiers.reduce((a, b) => ((b.rate != null && (a.rate == null || b.rate > a.rate)) ? b : a), { rate: null });
+    html += '<div class="card"><div class="card-title">差枚3分割 — どの層が据え置かれやすいか</div>';
+    html += '<table class="data-table"><thead><tr><th>層（特定日の差枚）</th><th>差枚レンジ</th><th>台数</th><th>据え置き率</th></tr></thead><tbody>';
+    R.tiers.forEach(t => {
+      const isBest = (t === best && t.rate != null && !t.thin);
+      const range = t.diffRange ? (fmtDiff(t.diffRange[0]) + ' 〜 ' + fmtDiff(t.diffRange[1])) : '—';
+      html += '<tr' + (isBest ? ' class="high"' : '') + '><td>' + t.label + (isBest ? ' 🎯' : '') + '</td><td>' + range +
+        '</td><td>' + t.n + (t.thin ? ' <span style="color:var(--warning)">※薄い</span>' : '') + '</td><td style="font-weight:700' +
+        (isBest ? ';color:var(--accent3)' : '') + '">' + pct(t.rate) + '</td></tr>';
+    });
+    html += '</tbody></table>';
+    html += '<div style="font-size:11px;color:var(--text2);margin-top:10px;line-height:1.7">' +
+      '「上位＝好調で終えた高設定」「下位＝凹んで終えた高設定」。下位の据え置き率が高ければ<b style="color:var(--text)">凹み据え置き型</b>、上位が高ければ<b style="color:var(--text)">好調継続型</b>の店のクセです。※薄い層は参考値。' +
+      '</div></div>';
+  }
+
+  // ③ ズラし（B）
+  const s = R.shift;
+  const shiftReal = (s.shiftRate != null && s.expectedShiftRate != null && s.notCarried >= 8 && s.shiftRate > s.expectedShiftRate * 1.2);
+  html += '<div class="card"><div class="card-title">ズラし — 据え置かれなかった台の「隣」は上がったか</div>';
+  html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">';
+  html += statBox('ズラし率', pct(s.shiftRate), shiftReal ? 'var(--accent2)' : 'var(--text2)');
+  html += statBox('ランダム期待', pct(s.expectedShiftRate), 'var(--text2)');
+  html += statBox('台 or 隣で残った率', pct(s.residualRate), 'var(--text)');
+  html += statBox('非据え置き台数', String(s.notCarried), 'var(--text2)');
+  html += '</div>';
+  html += '<div style="font-size:11px;color:var(--text2);margin-top:12px;line-height:1.7">' +
+    '据え置かれなかった ' + s.notCarried + '台のうち、翌日に<b style="color:var(--text)">隣（島の並びで前後）</b>が新規高設定だった台が ' + s.shiftHit + '台。<br>' +
+    (shiftReal
+      ? '<b style="color:var(--accent2)">ズラし率がランダム期待を明確に上回っています。横ズラし傾向あり。</b>据え置かれなかった台の隣も候補に入れる価値があります。'
+      : 'ズラし率はランダムに隣が光る背景（' + pct(s.expectedShiftRate) + '）と同程度で、明確な横ズラし傾向は確認できません。') +
+    '<br>※ ズラしは記述（有意性の主張はしません）。「新規」＝当日は高設定でなかった隣が翌日に高設定、で二重計上を排除。' +
+    '</div></div>';
+
+  // ④ 候補台リスト
+  if (R.candidateDay && R.candidates.length) {
+    html += '<div class="card"><div class="card-title">翌日据え置き狙い候補台 — 直近の特定日 ' + R.candidateDay + ' の高設定台</div>';
+    html += '<table class="data-table"><thead><tr><th>台番号</th><th>特定日の差枚</th><th>差枚層（目安）</th><th>その層の据え置き率</th></tr></thead><tbody>';
+    const tierLabels = ['上位', '中位', '下位'];
+    R.candidates.forEach(c => {
+      const likely = (c.tierRate != null && R.carryoverRate != null && c.tierRate >= R.carryoverRate);
+      html += '<tr' + (likely ? ' class="high"' : '') + '><td style="font-weight:700">' + c.machine + (likely ? ' 🎯' : '') +
+        '</td><td>' + fmtDiff(c.diff) + '</td><td>' + (tierLabels[c.tierIdx] || '—') + '</td><td style="font-weight:700' +
+        (likely ? ';color:var(--accent3)' : '') + '">' + pct(c.tierRate) + '</td></tr>';
+    });
+    html += '</tbody></table>';
+    html += '<div style="font-size:11px;color:var(--text2);margin-top:10px;line-height:1.7">' +
+      '🎯＝入った差枚層の据え置き率が全体の据え置き率（' + pct(R.carryoverRate) + '）以上の台。翌日に残りやすい候補の目安です。層は当日の差枚順で機械的に割当。' +
+      '</div></div>';
+  }
+
+  wrap.innerHTML = html;
+
+  function statBox(label, value, color) {
+    return '<div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:12px">' +
+      '<div style="font-size:10px;color:var(--text2);letter-spacing:1px;text-transform:uppercase;margin-bottom:6px">' + label + '</div>' +
+      '<div style="font-size:22px;font-weight:700;color:' + color + '">' + value + '</div></div>';
+  }
+  function fmtDiff(v) { const n = Math.round(v); return (n > 0 ? '+' : '') + n.toLocaleString(); }
+}
+
+
+
 function renderPage(id) {
   if (id==='target') renderTarget();
+  else if (id==='drift') renderDrift();
   else if (id==='machinetrend') renderMachineTrend();
   else if (id==='suffix') renderSuffix();
   else if (id==='daytype') renderDaytype();
   else if (id==='zone') renderZone();
+  else if (id==='daymap') renderDayMap();
+  else if (id==='rotation') renderRotation();
+  else if (id==='adjacency') renderAdjacency();
+  else if (id==='halltype') renderHalltype();
+  else if (id==='trend') renderTrend();
+  else if (id==='carryover') renderCarryover();
   else if (id==='spec') renderSpec();
   else if (id==='audit') renderAudit();
   else if (id==='heatmap') renderHeatmap();
@@ -914,8 +2356,6 @@ function renderMachineTrend() {
     tbody.appendChild(tr);
   });
 }
-
-function driftFmt(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 
 // ── 予測統合エンジン（案Y土台＋その日の全体率でMH層別正規化）──────────
 /* =========================================================================

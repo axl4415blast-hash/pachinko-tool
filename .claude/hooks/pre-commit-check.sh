@@ -1,15 +1,18 @@
 #!/bin/bash
-# PreToolUse hook (matcher: Bash) — commit時の「軽量」品質ゲート。
-# Before a `git commit`, 以下の速いチェックのみを実行し、失敗で commit をブロック(exit 2)：
-#   1) 構文：analysis_*.html のインラインJS node --check
-#   2) 構造：<div> 開閉バランス（|open-close| <= 1、CLAUDE.md 既定差1）
-#   3) コア一致：埋め込み計算コア（PredictionEngine2/SpecMatch/PredictorAudit）が
-#      グラン本店の同名コアとバイト一致（LF正規化）
-#   4) 未定義参照：ファイル内のどこにも定義がない識別子への参照（check-undefined-refs.js）。
-#      node --check は通るがブラウザ実行時にのみ ReferenceError になるバグ
-#      （Step3で共有定義 ZONE_CONFIGS を巻き込み削除した実例）を検出するためのガード。
-# 重い計算（合成データによる engine/SpecMatch/PredictorAudit の単体テスト群）は
-# コミット時には走らせない。GitHub Actions（.github/workflows/tests.yml、push/PR時）へ分離。
+# PreToolUse hook (matcher: Bash) — Claude Code経由のBashツール呼び出しをgit commitかどうかで
+# 判定し、該当すれば .claude/hooks/run-quality-checks.sh（実チェック本体）を実行する薄いラッパー。
+#
+# ⚠️ 既知の制約（2026-07-03判明）：Claude Codeの一部の実行環境では、settings.jsonに
+# 正しく設定していてもPreToolUse/PostToolUseフックがBashツール呼び出しに対して
+# 発火しないことがある（GitHub issue #6305, #11544 等で報告されている既知の不具合パターンと一致）。
+# 実際に「ハッシュ不一致のコミットを試みたが本フックがブロックしなかった」事象が
+# このセッションで2回再現し、環境非依存のBashコマンド1発でも本フックが一切発火しないことを
+# デバッグマーカーで確認済み。そのため、確実な砦は .git/hooks/pre-commit（git本体のネイティブ
+# フック。core.hooksPath未設定ならデフォルトの.git/hooks/pre-commitが常に呼ばれる）であり、
+# 本ファイルはあくまで「効くこともある二重の安全網」という位置づけにとどめる。
+# 実チェックのロジックは .claude/hooks/run-quality-checks.sh に一本化してあるので、
+# 発火する環境では従来通りコミットをブロックできる。
+#
 # Any non-commit Bash command is allowed silently (exit 0).
 #
 # Notes for this environment:
@@ -40,51 +43,5 @@ fi
 if [ -n "$CWD" ] && [ -d "$CWD" ]; then cd "$CWD" || exit 0; fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
-# Degrade gracefully if node disappears.
-if ! command -v node >/dev/null 2>&1; then
-  echo "pre-commit-check: node not found; skipping JS syntax check." >&2
-  exit 0
-fi
-
-FAIL=0
-FOUND=0
-for f in analysis_*.html; do
-  [ -e "$f" ] || continue
-  FOUND=1
-  # 1) 構文チェック
-  if ! node "$SCRIPT_DIR/check-html-js.js" "$f"; then
-    FAIL=1
-  fi
-  # 2) div 開閉バランス（|diff| <= 1 を許容）
-  o=$(grep -o '<div' "$f" | wc -l)
-  c=$(grep -o '</div>' "$f" | wc -l)
-  d=$((o - c)); [ "$d" -lt 0 ] && d=$(( -d ))
-  if [ "$d" -gt 1 ]; then
-    echo "pre-commit-check: [$f] div開閉バランス崩れ（open=$o close=$c diff=$((o-c))）" >&2
-    FAIL=1
-  fi
-  # 4) 未定義参照チェック（軽量静的解析）
-  if ! node "$SCRIPT_DIR/check-undefined-refs.js" "$f"; then
-    FAIL=1
-  fi
-done
-
-if [ "$FOUND" -eq 0 ]; then
-  echo "pre-commit-check: no analysis_*.html found; nothing to check." >&2
-  exit 0
-fi
-
-# 3) 埋め込み計算コアのバイト一致ガード
-if ! node "$SCRIPT_DIR/check-core-bytematch.js"; then
-  echo "pre-commit-check: 計算コアがグラン本店と不一致 — commit blocked。" >&2
-  FAIL=1
-fi
-
-if [ "$FAIL" -ne 0 ]; then
-  echo "pre-commit-check: FAILED — commit blocked. 上のエラーを直して再実行してください。" >&2
-  exit 2
-fi
-
-echo "pre-commit-check: 構文OK / div balance OK / コア一致OK / 未定義参照なし。" >&2
-exit 0
+bash "$SCRIPT_DIR/run-quality-checks.sh"
+exit $?

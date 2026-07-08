@@ -1,0 +1,12 @@
+# Step1: 日別島図（daymap）移植の抽出元ハッシュ
+# コピー元：analysis_グラン本店.html（322-353行目=HTML, 3177-3273行目=関数）
+# 2026-07-04 daitoyo-7features ブランチで大東洋本店へ挿入。
+[html]
+start_marker=<!-- 日別島図 -->
+lines=32
+sha256=492194983190dcc00df89db193e82ce9af7585e8903e65d1a248069bc453daa8
+
+[func]
+start_marker=// ── 日別島図 ──────────────────────────────
+lines=97
+sha256=422d67efbce9f5333c68bbafd3ffc939a013992b6fbb165f96f571f0aec3d233

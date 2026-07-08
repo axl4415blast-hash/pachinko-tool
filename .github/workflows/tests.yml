@@ -28,6 +28,15 @@ jobs:
       - name: 計算コア バイト一致ガード（グラン本店 = source of truth）
         run: node .claude/hooks/check-core-bytematch.js
 
+      - name: 移植ハッシュ照合（.migration-hashes/*.txt）
+        run: node .claude/hooks/check-migration-hashes.js
+
+      - name: 関数名の重複検出（グローバル無言上書きガード）
+        run: node .claude/hooks/check-function-duplicates.js
+
+      - name: HTML id の重複検出（ページブロック二重挿入ガード）
+        run: node .claude/hooks/check-html-id-duplicates.js
+
       # --- 重い計算（分析コアの単体テスト群）---
       - name: PredictionEngine2 品質ゲート（合成データ）
         run: node tests/fixtures/synthetic-data-generator.js

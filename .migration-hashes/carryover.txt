@@ -1,0 +1,31 @@
+# Step7: 特定日翌日の据え置き（carryover）移植の抽出元ハッシュ
+# コピー元：analysis_グラン本店.html（465-473行目=HTML[9行], 1866-2210行目=関数）
+#
+# 【HTMLブロック範囲の誤りを修正（2026-07-05）】当初HTMLブロックを465-542行(78行)として
+# 抽出していたが、page-carryover は実際には465-473行(9行)で閉じており、その後ろに続く
+# page-heatmap・page-machinetrend（グラン本店由来）まで巻き込んでいた。大東洋には既に
+# heatmap/machinetrendが存在したためページが二重化し、id重複＋グラン版UIによる実害
+# （ジャグラー限定フィルタ欠落・日付タブ相違）が発生していた。誤挿入した2ページを削除し、
+# HTMLブロックを正しい9行（page-carryoverのみ）に修正。ブラウザのIssuesパネル(重複id)で発覚。
+# 関数ブロックは見出しコメント「// ── ⑤ 特定日翌日 据え置き＋ズラし分析 ──」から開始。
+# その2行前に別機能(target)の残存コメント「// ── 明日の狙い目台（新：予測エンジン版...）──」が
+# あるが、これは含めない（誤って含めると別機能を巻き込む）。
+# carryoverNextDay/ReachesTier/NeighborsOfヘルパー＋computeCarryover(DI計算コア)＋renderCarryover。
+# 専用CSSは無し（driftの.diag-bannerを流用）。7機能で最複雑（MH層別検定）。
+# 2026-07-04 daitoyo-7features ブランチで大東洋本店へ挿入。
+#
+# 【funcブロックは大東洋固有の意図的逸脱あり（2026-07-05）】carryoverReachesTierの
+# フォールバックを rotation>0 → rotation>=100 に変更（大東洋のcriteriaはtiersを持たず
+# 常にこの枝を通るため、判定不可フィルタが緩すぎる問題への対処）。この変更でfuncブロックは
+# グラン本店とバイト同一ではなくなった（コメント4行追加＋1行変更で345→349行）。
+# 記録sha256は変更後の大東洋の状態を守る値に更新済み。グラン本店側は tiers 枝を通るため
+# 影響を受けない。
+[html]
+start_marker=<!-- ⑤ 特定日翌日 据え置き＋ズラし分析 -->
+lines=9
+sha256=0b9ade7c84a41e7922cb5835598ba7c87cf60bebaab841d60589d9552221172c
+
+[func]
+start_marker=// ── ⑤ 特定日翌日 据え置き＋ズラし分析 ──────────────────────
+lines=349
+sha256=4e8ff3aaf162dad5ce1975aaca27caaeb8ce1bab734b1d00743a1232f71b85ef
